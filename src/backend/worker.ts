@@ -17,7 +17,7 @@ import { BRANCHES } from "../services/discord";
 import { readVencordPackage } from "../services/vencord";
 import { checkUpdates, type UpdateInfo } from "../services/updates";
 import { SharedQueue } from "../shared/queue";
-import type { BackendEvent, UiCommand, WorkerMessage } from "../shared/protocol";
+import type { BackendEvent, UiCommand, WorkerMessage, WorkerReply } from "../shared/protocol";
 
 declare var self: Worker;
 
@@ -62,8 +62,17 @@ async function refreshUpdates() {
     pushView();
 }
 
-async function run(op: OperationKind, closeDiscordFirst: boolean) {
-    if (current) return;
+let running: Promise<void> | null = null;
+
+function run(op: OperationKind, closeDiscordFirst: boolean): Promise<void> {
+    if (current) return Promise.resolve();
+    const p = runInner(op, closeDiscordFirst);
+    running = p;
+    void p.finally(() => { if (running === p) running = null; });
+    return p;
+}
+
+async function runInner(op: OperationKind, closeDiscordFirst: boolean) {
     current = new AbortController();
     pushView();
     logger.info(`operation ${op} started`, { branch: state.branch, closeDiscordFirst });
@@ -103,6 +112,10 @@ async function installDep(id: DependencyId) {
             logger.warn(`winget install of ${id} did not result in a working install`, { exitCode: r.exitCode, status });
             emit({ type: "dependency-install", id, status: "failed", message: "The automatic installation didn't finish. Try the manual steps instead." });
         }
+    } catch (e) {
+        const err = toHelperError(e);
+        logger.error(`install of dependency ${id} failed: ${err.kind}: ${err.message}`, err.technical);
+        emit({ type: "dependency-install", id, status: "failed", message: "The automatic installation didn't finish. Try the manual steps instead." });
     } finally {
         installingDeps.delete(id);
         await refresh();
@@ -126,6 +139,7 @@ async function handle(command: UiCommand) {
             refreshUpdates().catch(() => {});
             return;
         case "select-branch":
+            if (current) return;
             if (BRANCHES.some(b => b.branch === command.branch)) {
                 state.branch = command.branch;
                 saveState(paths.state, state);
@@ -163,6 +177,14 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
                 logger.error("startup failed", err.technical);
                 emit({ type: "fatal", message: err.message });
             });
+        return;
+    }
+    if (msg.type === "shutdown") {
+        // Let the running operation finish its rollback and Discord relaunch before the process exits.
+        current?.abort();
+        (running ?? Promise.resolve())
+            .catch(() => {})
+            .finally(() => self.postMessage({ type: "shutdown-done" } satisfies WorkerReply));
         return;
     }
     handle(msg.command).catch(e => {

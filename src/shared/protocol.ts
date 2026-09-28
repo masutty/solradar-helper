@@ -23,4 +23,7 @@ export type BackendEvent =
 
 export type WorkerMessage =
     | { type: "init"; buffer: SharedArrayBuffer }
-    | { type: "command"; command: UiCommand };
+    | { type: "command"; command: UiCommand }
+    | { type: "shutdown" };
+
+export type WorkerReply = { type: "shutdown-done" };

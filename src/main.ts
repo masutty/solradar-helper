@@ -5,7 +5,7 @@ import { appPaths } from "./core/paths";
 import { acquireSingleInstance } from "./core/singleInstance";
 import { openUrl, showMessageBox, webView2Installed } from "./core/win32";
 import { SharedQueue } from "./shared/queue";
-import type { UiCommand, WorkerMessage } from "./shared/protocol";
+import type { UiCommand, WorkerMessage, WorkerReply } from "./shared/protocol";
 
 const html = htmlText as unknown as string;
 
@@ -48,6 +48,15 @@ webview.bind("__send", (command: UiCommand) => {
 webview.bind("__poll", () => queue.drain());
 webview.setHTML(html);
 webview.run();
+
+// Closing the window mid-operation: let the worker roll back and relaunch Discord first.
+await new Promise<void>(resolve => {
+    const timer = setTimeout(resolve, 30_000);
+    worker.onmessage = (event: MessageEvent<WorkerReply>) => {
+        if (event.data?.type === "shutdown-done") { clearTimeout(timer); resolve(); }
+    };
+    worker.postMessage({ type: "shutdown" } satisfies WorkerMessage);
+});
 
 worker.terminate();
 process.exit(0);
