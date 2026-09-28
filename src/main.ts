@@ -1,6 +1,8 @@
 import { SizeHint, Webview } from "webview-bun";
-import html from "./ui/index.html" with { type: "text" };
+import htmlText from "./ui/index.html" with { type: "text" };
 import { SharedQueue } from "./shared/queue";
+
+const html = htmlText as unknown as string;
 
 const queue = SharedQueue.create();
 const worker = new Worker(new URL("./backend/worker.ts", import.meta.url).href);

@@ -8,7 +8,7 @@
     "build": "bun build --compile --minify --windows-hide-console --target=bun-windows-x64 ./src/main.ts ./src/backend/worker.ts --outfile dist/SolRadarHelper.exe",
     "build:win": "bun run build",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit -p tsconfig.check.json"
   },
   "dependencies": {
     "webview-bun": "^2.4.0"
