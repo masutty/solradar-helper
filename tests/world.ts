@@ -13,6 +13,7 @@ export interface WorldOptions {
     alreadyInstalled?: boolean;
     injectedElsewhere?: boolean;
     vencordModified?: boolean;
+    pluginFetchFails?: boolean;
 }
 
 // A fake machine: temp LOCALAPPDATA with a Discord install, and a fake runner that
@@ -73,7 +74,7 @@ export function makeWorld(opts: WorldOptions = {}) {
                 if (!a.includes(SOLRADAR_REPO)) writeFileSync(join(target, "package.json"), JSON.stringify({ packageManager: "pnpm@11.9.0", engines: { node: ">=22" } }));
                 return {};
             }
-            if (a[0] === "fetch") return {};
+            if (a[0] === "fetch") return plugin && opts.pluginFetchFails ? { exitCode: 1, stderr: "network" } : {};
             if (a[0] === "reset") {
                 const to = a[2] === "FETCH_HEAD" ? (plugin ? "p-new" : "v-new") : a[2]!;
                 if (plugin) state.heads.plugin = to; else state.heads.vencord = to;

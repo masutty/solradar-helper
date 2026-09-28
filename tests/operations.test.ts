@@ -95,3 +95,29 @@ test("missing Discord is reported", async () => {
     const w = makeWorld();
     expect(await kindOf(runOperation("install", w.deps({ localAppData: join(w.local, "nowhere") })))).toBe("discord-not-found");
 });
+
+test("update cancelled at packages rolls both repos back", async () => {
+    const w = makeWorld({ alreadyInstalled: true });
+    const ac = new AbortController();
+    const deps = w.deps({ signal: ac.signal, emit: e => { if (e.type === "step" && e.id === "packages" && e.status === "running") ac.abort(); } });
+    expect(await kindOf(runOperation("update", deps))).toBe("cancelled");
+    expect(w.state.heads).toEqual({ vencord: "v-old", plugin: "p-old" });
+});
+
+test("update where the SolRadar fetch fails rolls Vencord back", async () => {
+    const w = makeWorld({ alreadyInstalled: true, pluginFetchFails: true });
+    expect(await kindOf(runOperation("update", w.deps()))).toBe("network");
+    expect(w.state.heads).toEqual({ vencord: "v-old", plugin: "p-old" });
+});
+
+test("failed install relaunches Discord when the Helper closed it", async () => {
+    const w = makeWorld({ discordRunning: true, buildFails: true });
+    expect(await kindOf(runOperation("install", w.deps({ closeDiscordFirst: true })))).toBe("build");
+    expect(w.launched).toEqual(["stable"]);
+});
+
+test("failed install does not launch Discord it did not close", async () => {
+    const w = makeWorld({ buildFails: true });
+    expect(await kindOf(runOperation("install", w.deps()))).toBe("build");
+    expect(w.launched).toEqual([]);
+});

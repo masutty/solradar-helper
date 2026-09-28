@@ -78,7 +78,22 @@ function ensureOk(r: CommandResult, kind: ErrorKind, message: string): void {
     if (r.exitCode !== 0 || r.cancelled || r.timedOut) throw commandError(kind, message, r);
 }
 
+interface Flags { closedByUs: boolean; install?: DiscordInstall }
+
 export async function runOperation(kind: OperationKind, deps: OperationDeps): Promise<void> {
+    const flags: Flags = { closedByUs: false };
+    try {
+        await pipeline(kind, deps, flags);
+    } catch (e) {
+        // If the Helper closed Discord and the operation failed, do not leave the user without Discord.
+        if (flags.closedByUs && flags.install) {
+            try { (deps.launch ?? launchDiscord)(flags.install); } catch { /* keep the original error */ }
+        }
+        throw e;
+    }
+}
+
+async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags): Promise<void> {
     const { paths, signal, emit } = deps;
     const ctx: ServiceCtx = { runner: deps.runner, env: deps.env, signal, onLine: line => emit({ type: "output", line }) };
     const labels: Partial<Record<StepId, string>> = kind === "update" ? { vencord: "Updating Vencord", solradar: "Updating SolRadar" } : {};
@@ -134,7 +149,9 @@ export async function runOperation(kind: OperationKind, deps: OperationDeps): Pr
         if (wasRunning && needsInject) {
             if (!deps.closeDiscordFirst) throw new HelperError("discord-running", "Please close Discord before continuing.");
             if (!(await closeDiscord(install, deps.runner, deps.env))) throw new HelperError("discord-running", "Discord could not be closed. Close it manually and try again.");
+            flags.closedByUs = true;
         }
+        flags.install = install;
         return { install, wasRunning, needsInject };
     });
 
@@ -148,7 +165,7 @@ export async function runOperation(kind: OperationKind, deps: OperationDeps): Pr
         await step("verify", async () => {
             if (readInjection(install, paths.checkout) !== "not-injected") throw new HelperError("inject", "Discord still appears to be patched. Open the log for details.");
         });
-        await step("launch", async () => (deps.launch ?? launchDiscord)(install));
+        await step("launch", async () => { (deps.launch ?? launchDiscord)(install); flags.closedByUs = false; });
         return;
     }
 
@@ -169,27 +186,32 @@ export async function runOperation(kind: OperationKind, deps: OperationDeps): Pr
         });
     };
 
-    await syncRepo("vencord", paths.checkout, VENCORD_REPO, "package.json", "Vencord");
-    mkdirSync(paths.userplugins, { recursive: true });
-    await syncRepo("solradar", paths.plugin, SOLRADAR_REPO, "index.tsx", "SolRadar");
+    let hadBackup = false;
+    try {
+        await syncRepo("vencord", paths.checkout, VENCORD_REPO, "package.json", "Vencord");
+        mkdirSync(paths.userplugins, { recursive: true });
+        await syncRepo("solradar", paths.plugin, SOLRADAR_REPO, "index.tsx", "SolRadar");
 
-    await step("packages", async () => {
-        ensureOk(await installPackages(ctx, paths), "network", "Vencord's packages could not be downloaded. Check your internet connection and try again.");
-    });
+        await step("packages", async () => {
+            ensureOk(await installPackages(ctx, paths), "network", "Vencord's packages could not be downloaded. Check your internet connection and try again.");
+        });
 
-    await step("build", async () => {
-        const hadBackup = backupDist(paths);
-        const r = await buildVencord(ctx, paths);
-        if (r.exitCode === 0 && !r.cancelled && !r.timedOut && isBuilt(paths)) return;
-        // Roll back so Discord keeps loading the last working build.
+        await step("build", async () => {
+            hadBackup = backupDist(paths);
+            const r = await buildVencord(ctx, paths);
+            if (r.exitCode === 0 && !r.cancelled && !r.timedOut && isBuilt(paths)) return;
+            throw commandError("build", hadBackup
+                ? "Vencord could not be built. Your previous version was kept. Open the detailed log for more information."
+                : "Vencord could not be built. Open the detailed log for more information.", r);
+        });
+    } catch (e) {
+        // Any failure or cancel before a successful build: keep Discord on the last working build.
         const rollbackCtx = { ...ctx, signal: undefined };
         if (hadBackup) restoreDist(paths);
         if (previous.vencord) await resetTo(rollbackCtx, paths.checkout, previous.vencord);
         if (previous.plugin) await resetTo(rollbackCtx, paths.plugin, previous.plugin);
-        throw commandError("build", hadBackup
-            ? "Vencord could not be built. Your previous version was kept. Open the detailed log for more information."
-            : "Vencord could not be built. Open the detailed log for more information.", r);
-    });
+        throw e;
+    }
 
     await step("inject", async () => {
         if (!needsInject) return skip("inject", "Discord is already patched");
@@ -197,6 +219,7 @@ export async function runOperation(kind: OperationKind, deps: OperationDeps): Pr
             if (!deps.closeDiscordFirst || !(await closeDiscord(install, deps.runner, deps.env))) {
                 throw new HelperError("discord-running", "Please close Discord before continuing.");
             }
+            flags.closedByUs = true;
         }
         ensureOk(await inject({ ...ctx, signal: undefined }, paths, install.branch), "inject", "Vencord was built successfully, but Discord could not be patched.");
     });
@@ -208,7 +231,8 @@ export async function runOperation(kind: OperationKind, deps: OperationDeps): Pr
     });
 
     await step("launch", async () => {
-        if (wasRunning && !needsInject) await closeDiscord(install, deps.runner, deps.env);
+        if (wasRunning && !needsInject) { await closeDiscord(install, deps.runner, deps.env); flags.closedByUs = true; }
         (deps.launch ?? launchDiscord)(install);
+        flags.closedByUs = false;
     });
 }
