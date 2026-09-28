@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules/webview-bun", "src/main.ts"]
+  "compilerOptions": {
+    "paths": { "webview-bun": ["./src/shims/webview-bun.d.ts"] }
+  },
+  "exclude": ["node_modules"]
 }
