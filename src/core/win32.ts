@@ -25,10 +25,10 @@ export function parseWebView2Version(regOutput: string): string | undefined {
     return v && v !== "0.0.0.0" ? v : undefined;
 }
 
-const WEBVIEW2_KEYS = [
-    "HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
-    "HKLM\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
-    "HKCU\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+export const WEBVIEW2_KEYS = [
+    "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    "HKLM\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    "HKCU\\Software\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
 ];
 
 export function webView2Installed(): boolean {
@@ -38,20 +38,22 @@ export function webView2Installed(): boolean {
     });
 }
 
-const explorer = () => system32("..\explorer.exe");
+export const explorer = () => system32("..\\explorer.exe");
 
-function detached(cmd: string[]) {
-    Bun.spawn(cmd, { stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
+// Bun kills direct children when the parent exits. These hand-off tools return quickly,
+// so run them synchronously: the caller may exit right after.
+function handOff(cmd: string[]) {
+    Bun.spawnSync(cmd, { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true });
 }
 
 export function openUrl(url: string): void {
-    detached([system32("rundll32.exe"), "url.dll,FileProtocolHandler", url]);
+    handOff([system32("rundll32.exe"), "url.dll,FileProtocolHandler", url]);
 }
 
 export function openFolder(path: string): void {
-    detached([explorer(), path]);
+    handOff([explorer(), path]);
 }
 
 export function revealFile(path: string): void {
-    detached([explorer(), `/select,${path}`]);
+    handOff([explorer(), `/select,${path}`]);
 }

@@ -83,7 +83,7 @@ test("process listing forces UTF-8 output from PowerShell", async () => {
 
 test("real PowerShell round-trips non-ASCII output with the UTF-8 prefix", async () => {
     const runner = createCommandRunner(createLogger(tempDir()));
-    const ps = join(process.env.SystemRoot ?? "C:\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const ps = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
     const r = await runner.run({ cmd: ps, args: ["-NoProfile", "-NonInteractive", "-Command", UTF8_PREFIX + "Write-Output 'Jo\u00e3o'"], env: process.env as Record<string, string>, timeoutMs: 30_000 });
     expect(r.stdout).toContain("Jo\u00e3o");
 });
