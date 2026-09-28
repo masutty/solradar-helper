@@ -7,7 +7,7 @@ import {
 } from "../core/constants";
 import { buildToolEnv, type ToolEnv } from "../core/env";
 import { toHelperError } from "../core/errors";
-import { createLogger } from "../core/logger";
+import { createLogger, type LogEntry } from "../core/logger";
 import { appPaths } from "../core/paths";
 import { loadState, saveState } from "../core/state";
 import { openFolder, openUrl, revealFile } from "../core/win32";
@@ -24,12 +24,12 @@ declare var self: Worker;
 const localAppData = process.env.LOCALAPPDATA ?? "";
 const paths = appPaths(localAppData);
 // Log lines written before the queue exists are buffered, then flushed on init.
-const pendingLogLines: string[] = [];
-const logger = createLogger(paths.logs, new Date(), undefined, line => {
-    if (queue) queue.push({ type: "log", line } satisfies BackendEvent);
+const pendingLogEntries: LogEntry[] = [];
+const logger = createLogger(paths.logs, new Date(), undefined, entry => {
+    if (queue) queue.push({ type: "log", entry } satisfies BackendEvent);
     else {
-        pendingLogLines.push(line);
-        if (pendingLogLines.length > 500) pendingLogLines.shift();
+        pendingLogEntries.push(entry);
+        if (pendingLogEntries.length > 500) pendingLogEntries.shift();
     }
 });
 const runner = createCommandRunner(logger);
@@ -54,10 +54,32 @@ function pushView() {
     if (snapshot) emit({ type: "view", view: deriveView(snapshot, updates), busy: current !== null });
 }
 
+// Lines produced by refresh (startup and "check again") are background noise in the activity panel.
+let refreshDepth = 0;
+const syncBackground = () => { logger.background = refreshDepth > 0 && current === null; };
+
+function summarize(s: Snapshot): string {
+    const deps = s.dependencies.map(d => {
+        const name = DEPENDENCIES[d.id].name;
+        return d.state === "ok" ? `${name} ${d.version ?? ""}`.trim() : `${name} ${d.state === "missing" ? "missing" : d.state === "outdated" ? "too old" : "not working"}`;
+    });
+    const discord = !s.discord.selected ? "Discord not found" : s.discord.running ? "Discord running" : "Discord not running";
+    const solradar = s.solradar.state === "ready" ? `SolRadar installed${s.solradar.version ? ` ${s.solradar.version}` : ""}` : "SolRadar not installed";
+    return `Checked: ${[...deps, discord, solradar].join(", ")}`;
+}
+
 async function refresh() {
-    env = await buildToolEnv(runner);
-    snapshot = await takeSnapshot(ctx(), paths, localAppData, state.branch);
-    pushView();
+    refreshDepth++;
+    syncBackground();
+    try {
+        env = await buildToolEnv(runner);
+        snapshot = await takeSnapshot(ctx(), paths, localAppData, state.branch);
+        logger.log({ level: "info", kind: "msg", text: summarize(snapshot), background: false });
+        pushView();
+    } finally {
+        refreshDepth--;
+        syncBackground();
+    }
 }
 
 async function refreshUpdates() {
@@ -82,8 +104,10 @@ function run(op: OperationKind, closeDiscordFirst: boolean): Promise<void> {
 
 async function runInner(op: OperationKind, closeDiscordFirst: boolean) {
     current = new AbortController();
+    syncBackground();
     pushView();
-    logger.info(`operation ${op} started`, { branch: state.branch, closeDiscordFirst });
+    const title = op[0]!.toUpperCase() + op.slice(1);
+    logger.info(`${title} started`, { branch: state.branch, closeDiscordFirst });
     let ok = false;
     try {
         env = await buildToolEnv(runner);
@@ -92,15 +116,18 @@ async function runInner(op: OperationKind, closeDiscordFirst: boolean) {
             branch: snapshot?.discord.selected?.branch ?? state.branch, closeDiscordFirst,
         });
         ok = true;
+        logger.info(`${title} finished successfully`);
         emit({ type: "operation-end", op, ok: true });
     } catch (e) {
         const err = toHelperError(e);
-        logger.error(`operation ${op} failed: ${err.kind}: ${err.message}`, err.technical);
+        if (err.kind === "cancelled") logger.warn(`${title} cancelled`);
+        else logger.error(`${title} failed: ${err.message}`, err.technical === undefined ? { kind: err.kind } : `[${err.kind}]\n${err.technical}`);
         emit({ type: "operation-end", op, ok: false, error: { kind: err.kind, message: err.message } });
     } finally {
         state.lastOperation = { op, ok, at: new Date().toISOString() };
         saveState(paths.state, state);
         current = null;
+        syncBackground();
         await refresh().catch(e => logger.error("refresh failed", String(e)));
         if (ok && (op === "install" || op === "update")) refreshUpdates().catch(() => {});
     }
@@ -140,6 +167,20 @@ async function debugReport(redact: boolean) {
     revealFile(file);
 }
 
+// Safety net: the same UI error repeating within 10 s is only counted, not logged again.
+const UI_ERROR_WINDOW_MS = 10_000;
+const recentUiErrors = new Map<string, { at: number; suppressed: number }>();
+
+function logUiError(message: string, stack?: string) {
+    const now = Date.now();
+    const seen = recentUiErrors.get(message);
+    if (seen && now - seen.at < UI_ERROR_WINDOW_MS) { seen.suppressed++; return; }
+    if (seen && seen.suppressed > 0) logger.warn(`ui error repeated ${seen.suppressed} more time(s): ${message}`);
+    recentUiErrors.set(message, { at: now, suppressed: 0 });
+    if (recentUiErrors.size > 50) recentUiErrors.delete(recentUiErrors.keys().next().value!);
+    logger.error("ui error", { message, stack });
+}
+
 async function handle(command: UiCommand) {
     switch (command.type) {
         case "refresh":
@@ -171,7 +212,7 @@ async function handle(command: UiCommand) {
         case "debug-report":
             return debugReport(command.redact);
         case "ui-error":
-            logger.error("ui error", { message: command.message, stack: command.stack });
+            logUiError(command.message, command.stack);
             return;
     }
 }
@@ -180,7 +221,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
     if (msg.type === "init") {
         queue = new SharedQueue(msg.buffer);
-        for (const line of pendingLogLines.splice(0)) queue.push({ type: "log", line } satisfies BackendEvent);
+        for (const entry of pendingLogEntries.splice(0)) queue.push({ type: "log", entry } satisfies BackendEvent);
         logger.info(`SolRadar Helper ${HELPER_VERSION} starting`, { paths });
         refresh()
             .then(() => refreshUpdates())

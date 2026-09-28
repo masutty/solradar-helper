@@ -7,11 +7,13 @@
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #5d6675; --line: #e3e6eb;
     --ok: #1f8a4c; --warn: #b26a00; --error: #c62828; --neutral: #4b5563; --accent: #4f46e5; --accent-text: #fff;
+    --log-cmd: #0e6c8f; --log-step: #4f46e5; --log-warn: #a35f00; --log-error: #c62828; --log-error-bg: #fdeaea; --log-time: #8a93a3;
     color-scheme: light dark;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #16181d; --card: #1f232b; --text: #e7e9ee; --muted: #9aa3b2; --line: #2e333d;
-            --ok: #4ade80; --warn: #fbbf24; --error: #f87171; --neutral: #9aa3b2; --accent: #818cf8; --accent-text: #111; }
+            --ok: #4ade80; --warn: #fbbf24; --error: #f87171; --neutral: #9aa3b2; --accent: #818cf8; --accent-text: #111;
+            --log-cmd: #5cc8ee; --log-step: #a5b4fc; --log-warn: #fbbf24; --log-error: #ff8080; --log-error-bg: #3a1d20; --log-time: #6f7787; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
@@ -50,7 +52,20 @@
   .overlay .dialog p { margin: 0 0 8px; white-space: pre-wrap; }
   .activity { margin-top: 12px; width: 100%; }
   .activity h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
-  .activity pre { margin: 0; font: 11px/1.4 Consolas, monospace; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+  .activity .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .activity .head h2 { margin: 0; }
+  .activity .head label { font-size: 12px; color: var(--muted); }
+  .activity .log { margin: 0; font: 11px/1.45 Consolas, monospace; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 0; max-height: 220px; overflow: auto; }
+  .log .ln { padding: 0 10px; white-space: pre-wrap; word-break: break-word; border-left: 3px solid transparent; }
+  .log .ts { color: var(--log-time); margin-right: 8px; }
+  .log .ln.cmd { color: var(--log-cmd); }
+  .log .ln.out { color: var(--muted); padding-left: 28px; }
+  .log .ln.step { color: var(--log-step); font-weight: 700; }
+  .log .ln.warn { color: var(--log-warn); }
+  .log .ln.error { color: var(--log-error); font-weight: 700; background: var(--log-error-bg); border-left-color: var(--log-error); padding-top: 2px; padding-bottom: 2px; margin: 2px 0; }
+  .log .empty { padding: 0 10px; color: var(--muted); }
+  .errbanner { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; background: var(--log-error-bg); color: var(--log-error); border: 1px solid var(--log-error); border-left-width: 4px; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; font-weight: 700; white-space: pre-wrap; word-break: break-word; }
+  .errbanner button { padding: 2px 8px; font-size: 12px; flex: none; }
   .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; }
 </style>
 </head>
@@ -58,11 +73,26 @@
 <main id="app">Loading…</main>
 <script>
 "use strict";
-// Forward every UI error to the backend log, so problems inside the window are never silent.
+// Forward UI errors to the backend log, so problems inside the window are never silent.
+// Loop-proof: binding-parse errors are ignored, errors raised while forwarding are never forwarded,
+// and at most 5 errors per 10 s are forwarded.
+let forwarding = false;
+const forwardTimes = [];
 function reportError(err) {
   const message = err && err.message ? String(err.message) : String(err);
   const stack = err && err.stack ? String(err.stack) : undefined;
-  try { window.__send({ type: "ui-error", message, stack }); } catch (_) { /* nothing else we can do */ }
+  if (message.includes("Failed to parse binding result as JSON")) return;
+  if (forwarding) return;
+  const now = Date.now();
+  while (forwardTimes.length && now - forwardTimes[0] > 10000) forwardTimes.shift();
+  if (forwardTimes.length >= 5) return;
+  forwardTimes.push(now);
+  forwarding = true;
+  try {
+    const p = window.__send({ type: "ui-error", message, stack });
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch (_) { /* nothing else we can do */ }
+  finally { forwarding = false; }
   try {
     ui.fatal = "Something went wrong in the window. Open the logs for details.";
     render();
@@ -78,8 +108,12 @@ const DISCORD_DOWNLOAD_URL = "https://discord.com/download";
 const HELP_URL = "https://github.com/masutty/solradar-helper#readme";
 
 const ui = { view: null, busy: false, op: null, steps: [], cancellable: true, lastLine: "", result: null, deps: {}, showManual: {}, redact: true, fatal: null,
-  starting: false, logs: [], logDirty: true, showActivity: false, logStick: true, logTop: 0 };
-const send = cmd => window.__send(cmd);
+  starting: false, logs: [], logDirty: true, showActivity: false, logStick: true, logTop: 0, showBackground: false, logError: null };
+const send = cmd => {
+  const p = window.__send(cmd);
+  if (p && typeof p.catch === "function") p.catch(() => {});
+  return p;
+};
 
 function el(tag, props, ...children) {
   const node = document.createElement(tag);
@@ -150,9 +184,14 @@ function handle(e) {
     case "output": ui.lastLine = e.line; break;
     case "operation-end": ui.result = e; ui.op = e.op; ui.starting = false; break;
     case "log":
-      ui.logs.push(e.line);
+      ui.logs.push(e.entry);
       if (ui.logs.length > 500) ui.logs.splice(0, ui.logs.length - 500);
       ui.logDirty = true;
+      if (e.entry.level === "error") {
+        ui.logError = e.entry.text.split("\n")[0];
+        ui.showActivity = true;
+        ui.logStick = true;
+      }
       break;
     case "dependency-install":
       ui.deps[e.id] = e;
@@ -212,15 +251,30 @@ function back() {
   render();
 }
 
-// One persistent <pre> so scroll position survives the full re-render on every poll.
-const logPre = el("pre", { onscroll: () => {
+// One persistent log box so scroll position survives the full re-render on every poll.
+const logPre = el("div", { class: "log", onscroll: () => {
   ui.logStick = logPre.scrollHeight - logPre.scrollTop - logPre.clientHeight < 8;
   ui.logTop = logPre.scrollTop;
 } });
 
+function logLine(entry) {
+  const prefix = entry.kind === "cmd" ? "$ " : entry.level === "error" ? "ERROR " : "";
+  return el("div", { class: `ln ${entry.kind} ${entry.level}` }, el("span", { class: "ts", text: entry.ts }), prefix + entry.text);
+}
+
 function activityPanel() {
-  if (ui.logDirty) { logPre.textContent = ui.logs.join("\n"); ui.logDirty = false; }
-  return el("div", { class: "activity" }, el("h2", { text: "Activity" }), logPre);
+  if (ui.logDirty) {
+    const shown = ui.logs.filter(l => ui.showBackground || !l.background);
+    logPre.replaceChildren(...(shown.length ? shown.map(logLine) : [el("div", { class: "empty", text: "Nothing to show yet." })]));
+    ui.logDirty = false;
+  }
+  const box = el("input", { type: "checkbox", onchange: e => { ui.showBackground = e.target.checked; ui.logDirty = true; render(); } });
+  box.checked = ui.showBackground;
+  return el("div", { class: "activity" },
+    ui.logError ? el("div", { class: "errbanner" }, el("span", { text: "Error: " + ui.logError }),
+      el("button", { onclick: () => { ui.logError = null; render(); }, text: "Dismiss" })) : null,
+    el("div", { class: "head" }, el("h2", { text: "Activity" }), el("label", {}, box, " Show background checks")),
+    logPre);
 }
 
 function syncLogScroll() {

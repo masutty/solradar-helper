@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { createCommandRunner } from "../src/core/commands";
-import { createLogger } from "../src/core/logger";
+import { createLogger, type LogEntry } from "../src/core/logger";
 import { tempDir } from "./helpers";
 
 const bun = process.execPath;
@@ -55,4 +55,28 @@ test("runs in the given cwd", async () => {
     const r = await runner.run({ cmd: bun, args: ["-e", "console.log(process.cwd())"], cwd: dir, env });
     // %TEMP% may be an 8.3 short path; compare the final segment only.
     expect(r.stdout.trim().toLowerCase().endsWith(basename(dir).toLowerCase())).toBe(true);
+});
+
+test("runner logs the command, its output and maps exit codes to levels", async () => {
+    const entries: LogEntry[] = [];
+    const runner = createCommandRunner(createLogger(tempDir(), new Date(), 10, e => entries.push(e)));
+    await runner.run({ cmd: bun, args: ["-e", "console.log('hi'); process.exit(0)"], env });
+    expect(entries[0]!.kind).toBe("cmd");
+    expect(entries[0]!.level).toBe("debug");
+    expect(entries.find(e => e.kind === "out")).toMatchObject({ level: "debug", text: "hi" });
+    expect(entries.at(-1)).toMatchObject({ level: "debug", text: "exit 0" });
+
+    entries.length = 0;
+    await runner.run({ cmd: bun, args: ["-e", "process.exit(3)"], env });
+    expect(entries.at(-1)).toMatchObject({ level: "warn", text: "exit 3" });
+
+    entries.length = 0;
+    await runner.run({ cmd: bun, args: ["-e", "setTimeout(() => {}, 30000)"], env, timeoutMs: 300 });
+    expect(entries.at(-1)).toMatchObject({ level: "warn", text: "timed out" });
+
+    entries.length = 0;
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 300);
+    await runner.run({ cmd: bun, args: ["-e", "setTimeout(() => {}, 30000)"], env }, { signal: ac.signal });
+    expect(entries.at(-1)).toMatchObject({ level: "warn", text: "cancelled" });
 });

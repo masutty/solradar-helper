@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { appPaths } from "../src/core/paths";
 import { loadState, saveState } from "../src/core/state";
-import { createLogger, timestamp } from "../src/core/logger";
+import { createLogger, timestamp, type LogEntry } from "../src/core/logger";
 import { HelperError, toHelperError } from "../src/core/errors";
 import { tempDir } from "./helpers";
 
@@ -39,17 +39,30 @@ test("logger writes lines and keeps only the newest logs", () => {
     expect(existsSync(join(dir, "helper-20260110-000000.log"))).toBe(false);
 });
 
-test("createLogger passes each formatted line to onLine", () => {
+test("createLogger emits structured entries and keeps the file complete", () => {
     const dir = tempDir();
-    const lines: string[] = [];
-    const log = createLogger(dir, new Date("2026-09-28T20:15:07Z"), 10, l => lines.push(l));
+    const entries: LogEntry[] = [];
+    const log = createLogger(dir, new Date("2026-09-28T20:15:07Z"), 10, e => entries.push(e));
     log.info("hello", { a: 1 });
-    log.error("bad");
-    expect(lines.length).toBe(2);
-    expect(lines[0]!).toContain("[INFO] hello {\"a\":1}");
-    expect(lines[1]!).toContain("[ERROR] bad");
-    expect(lines[0]!.endsWith("\n")).toBe(false);
-    expect(readFileSync(log.file, "utf8")).toBe(lines.join("\n") + "\n");
+    log.error("bad", "line1\nline2");
+    log.log({ level: "debug", kind: "cmd", text: "git status" });
+    log.log({ level: "debug", kind: "out", text: "clean" });
+    log.step("▶ Building");
+    log.background = true;
+    log.debug("quiet");
+    log.log({ level: "info", kind: "msg", text: "summary", background: false });
+    expect(entries.map(e => [e.level, e.kind])).toEqual([
+        ["info", "msg"], ["error", "msg"], ["debug", "cmd"], ["debug", "out"], ["info", "step"], ["debug", "msg"], ["info", "msg"],
+    ]);
+    expect(entries[0]!.text).toBe("hello");
+    expect(entries[1]!.text).toBe("bad\nline1\nline2");
+    expect(entries[0]!.ts).toMatch(/^\d\d:\d\d:\d\d$/);
+    expect(entries.map(e => e.background)).toEqual([false, false, false, false, false, true, false]);
+    const file = readFileSync(log.file, "utf8");
+    expect(file).toContain("[INFO] hello {\"a\":1}");
+    expect(file).toContain("[ERROR] bad line1\nline2");
+    expect(file).toContain("[DEBUG] exec git status");
+    expect(file).toContain("[DEBUG]   | clean");
 });
 
 test("toHelperError keeps HelperErrors and wraps anything else", () => {

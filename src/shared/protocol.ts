@@ -1,6 +1,7 @@
 import type { OperationEvent, OperationKind } from "../app/operations";
 import type { ViewModel } from "../app/view";
 import type { ErrorKind } from "../core/errors";
+import type { LogEntry } from "../core/logger";
 import type { DependencyId } from "../services/dependencies";
 
 export type UiCommand =
@@ -21,7 +22,7 @@ export type BackendEvent =
     | { type: "dependency-install"; id: DependencyId; status: "running" | "done" | "failed"; message?: string }
     | { type: "report-ready"; path: string }
     | { type: "fatal"; message: string }
-    | { type: "log"; line: string };
+    | { type: "log"; entry: LogEntry };
 
 export type WorkerMessage =
     | { type: "init"; buffer: SharedArrayBuffer }

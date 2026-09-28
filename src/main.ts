@@ -42,10 +42,12 @@ try {
 }
 
 webview.title = HELPER_NAME;
+// webview-bun JSON.stringifies every binding result; returning undefined makes the page throw on each call.
 webview.bind("__send", (command: UiCommand) => {
     worker.postMessage({ type: "command", command } satisfies WorkerMessage);
+    return null;
 });
-webview.bind("__poll", () => queue.drain());
+webview.bind("__poll", () => queue.drain() ?? []);
 webview.setHTML(html);
 webview.run();
 

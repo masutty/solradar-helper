@@ -72,10 +72,10 @@ export function createCommandRunner(logger: Logger): CommandRunner {
     return {
         async run(spec, options = {}) {
             const env = spec.env ?? (process.env as Record<string, string>);
-            logger.info("exec", describe(spec));
+            logger.log({ level: "debug", kind: "cmd", text: describe(spec) });
             const exe = isAbsolute(spec.cmd) ? spec.cmd : Bun.which(spec.cmd, { PATH: pathOf(env) });
             if (!exe) {
-                logger.warn("command not found", spec.cmd);
+                logger.warn(`command not found: ${spec.cmd}`);
                 return { ...EMPTY, exitCode: -1, stderr: `${spec.cmd} was not found`, notFound: true };
             }
             if (options.signal?.aborted) return { ...EMPTY, exitCode: -1, cancelled: true };
@@ -96,13 +96,16 @@ export function createCommandRunner(logger: Logger): CommandRunner {
             options.signal?.addEventListener("abort", onAbort, { once: true });
             const timer = spec.timeoutMs ? setTimeout(() => { timedOut = true; killTree(proc.pid); }, spec.timeoutMs) : undefined;
 
-            const onLine = (line: string) => { logger.info(`  | ${line}`); options.onLine?.(line); };
+            const onLine = (line: string) => { logger.log({ level: "debug", kind: "out", text: line }); options.onLine?.(line); };
             const [stdout, stderr] = await Promise.all([collect(proc.stdout, onLine), collect(proc.stderr, onLine)]);
             const exitCode = await proc.exited;
 
             clearTimeout(timer);
             options.signal?.removeEventListener("abort", onAbort);
-            logger.info("exit", { exitCode, timedOut, cancelled });
+            if (cancelled) logger.warn("cancelled");
+            else if (timedOut) logger.warn("timed out");
+            else if (exitCode !== 0) logger.warn(`exit ${exitCode}`);
+            else logger.debug("exit 0");
             return { exitCode, stdout, stderr, notFound: false, timedOut, cancelled };
         },
     };

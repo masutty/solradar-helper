@@ -94,29 +94,36 @@ export async function runOperation(kind: OperationKind, deps: OperationDeps): Pr
 }
 
 async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags): Promise<void> {
-    const { paths, signal, emit } = deps;
+    const { paths, signal, emit, logger } = deps;
     const ctx: ServiceCtx = { runner: deps.runner, env: deps.env, signal, onLine: line => emit({ type: "output", line }) };
     const labels: Partial<Record<StepId, string>> = kind === "update" ? { vencord: "Updating Vencord", solradar: "Updating SolRadar" } : {};
     emit({ type: "steps", op: kind, steps: PLAN[kind].map(id => ({ id, label: labels[id] ?? LABELS[id], status: "pending" })) });
 
+    const labelOf = (id: StepId) => labels[id] ?? LABELS[id];
     let skipped = false;
     const step = async <T>(id: StepId, fn: () => Promise<T>): Promise<T> => {
         const cancellable = !NOT_CANCELLABLE.has(id);
         if (signal.aborted) throw new HelperError("cancelled", "Cancelled.");
         emit({ type: "step", id, status: "running", cancellable });
+        logger.step(`▶ ${labelOf(id)}`);
         skipped = false;
         try {
             const result = await fn();
-            if (!skipped) emit({ type: "step", id, status: "done", cancellable });
+            if (!skipped) {
+                emit({ type: "step", id, status: "done", cancellable });
+                logger.step(`✓ ${labelOf(id)}`);
+            }
             return result;
         } catch (e) {
             const err = toHelperError(e);
             emit({ type: "step", id, status: "failed", detail: err.message, cancellable });
+            logger.step(`✗ ${labelOf(id)}`);
             throw err;
         }
     };
     const skip = (id: StepId, detail: string) => {
         skipped = true;
+        logger.step(`– ${labelOf(id)} (skipped: ${detail})`);
         emit({ type: "step", id, status: "skipped", detail, cancellable: !NOT_CANCELLABLE.has(id) });
     };
 
