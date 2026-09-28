@@ -20,13 +20,15 @@ export function pruneLogs(dir: string, keep: number): void {
     for (const f of logs.slice(0, Math.max(0, logs.length - keep))) rmSync(join(dir, f), { force: true });
 }
 
-export function createLogger(dir: string, now: Date = new Date(), keep = LOG_RETENTION): Logger {
+export function createLogger(dir: string, now: Date = new Date(), keep = LOG_RETENTION, onLine?: (line: string) => void): Logger {
     mkdirSync(dir, { recursive: true });
     pruneLogs(dir, keep - 1);
     const file = join(dir, `helper-${timestamp(now)}.log`);
     const write = (level: string, message: string, data?: unknown) => {
         const extra = data === undefined ? "" : " " + (typeof data === "string" ? data : JSON.stringify(data));
-        appendFileSync(file, `${new Date().toISOString()} [${level}] ${message}${extra}\n`);
+        const line = `${new Date().toISOString()} [${level}] ${message}${extra}`;
+        appendFileSync(file, line + "\n");
+        try { onLine?.(line); } catch { /* a broken listener must not break logging */ }
     };
     return {
         file,

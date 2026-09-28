@@ -45,34 +45,52 @@
   footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px; }
   footer .disclaimer { width: 100%; font-size: 12px; color: var(--muted); margin-top: 6px; }
   select { font: inherit; padding: 4px 8px; border-radius: 6px; background: var(--card); color: var(--text); border: 1px solid var(--line); }
-  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); max-width: 460px; }
-  dialog::backdrop { background: rgba(0,0,0,.4); }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .overlay .dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); max-width: 460px; width: 100%; padding: 16px 18px; }
+  .overlay .dialog p { margin: 0 0 8px; white-space: pre-wrap; }
+  .activity { margin-top: 12px; width: 100%; }
+  .activity h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .activity pre { margin: 0; font: 11px/1.4 Consolas, monospace; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
   .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; }
 </style>
 </head>
 <body>
 <main id="app">Loading…</main>
-<dialog id="confirm">
-  <p id="confirm-text"></p>
-  <div class="actions" style="justify-content:flex-end">
-    <button id="confirm-cancel">Cancel</button>
-    <button id="confirm-ok" class="primary">Continue</button>
-  </div>
-</dialog>
 <script>
 "use strict";
+// Forward every UI error to the backend log, so problems inside the window are never silent.
+function reportError(err) {
+  const message = err && err.message ? String(err.message) : String(err);
+  const stack = err && err.stack ? String(err.stack) : undefined;
+  try { window.__send({ type: "ui-error", message, stack }); } catch (_) { /* nothing else we can do */ }
+  try {
+    ui.fatal = "Something went wrong in the window. Open the logs for details.";
+    render();
+  } catch (_) { /* rendering itself is broken */ }
+}
+window.onerror = (message, source, line, col, error) => {
+  reportError(error || new Error(`${message} (${source}:${line}:${col})`));
+};
+window.addEventListener("unhandledrejection", ev => reportError(ev.reason));
+
 const VENCORD_INSTALLER_URL = "https://vencord.dev/download/";
 const DISCORD_DOWNLOAD_URL = "https://discord.com/download";
 const HELP_URL = "https://github.com/masutty/solradar-helper#readme";
 
-const ui = { view: null, busy: false, op: null, steps: [], cancellable: true, lastLine: "", result: null, deps: {}, showManual: {}, redact: true, fatal: null };
+const ui = { view: null, busy: false, op: null, steps: [], cancellable: true, lastLine: "", result: null, deps: {}, showManual: {}, redact: true, fatal: null,
+  starting: false, logs: [], logDirty: true, showActivity: false, logStick: true, logTop: 0 };
 const send = cmd => window.__send(cmd);
 
 function el(tag, props, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
     if (v === undefined || v === null || v === false) continue;
-    if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    if (k.startsWith("on")) node.addEventListener(k.slice(2), ev => {
+      try {
+        const r = v(ev);
+        if (r && typeof r.then === "function") r.then(undefined, reportError);
+      } catch (err) { reportError(err); }
+    });
     else if (k === "class") node.className = v;
     else if (k === "text") node.textContent = v;
     else node.setAttribute(k, v === true ? "" : v);
@@ -83,12 +101,22 @@ function el(tag, props, ...children) {
 
 function confirmDialog(text) {
   return new Promise(resolve => {
-    const d = document.getElementById("confirm");
-    document.getElementById("confirm-text").textContent = text;
-    document.getElementById("confirm-ok").onclick = () => { d.close(); resolve(true); };
-    document.getElementById("confirm-cancel").onclick = () => { d.close(); resolve(false); };
-    d.showModal();
+    const done = answer => { overlay.remove(); resolve(answer); };
+    const overlay = el("div", { class: "overlay" },
+      el("div", { class: "dialog", role: "dialog" },
+        el("p", { text }),
+        el("div", { class: "actions", style: "justify-content:flex-end;margin-bottom:0" },
+          el("button", { onclick: () => done(false), text: "Cancel" }),
+          el("button", { class: "primary", onclick: () => done(true), text: "Continue" }))));
+    document.body.append(overlay);
   });
+}
+
+// Show the progress screen right away; the backend's "steps" event replaces this placeholder.
+function runOp(op, closeDiscord) {
+  ui.result = null; ui.op = op; ui.steps = []; ui.lastLine = ""; ui.cancellable = true; ui.starting = true;
+  render();
+  send({ type: "run", op, closeDiscord });
 }
 
 function toast(text) {
@@ -106,14 +134,13 @@ async function startOperation(op) {
   if (needsClose) lines.push("Discord needs to be closed and will be closed now.");
   if (op === "update" && v.discord.running && !needsClose) lines.push("Discord will restart when the update is done.");
   if (lines.length && !(await confirmDialog(lines.join("\n\n")))) return;
-  ui.result = null;
-  send({ type: "run", op, closeDiscord: needsClose });
+  runOp(op, needsClose);
 }
 
 function handle(e) {
   switch (e.type) {
     case "view": ui.view = e.view; ui.busy = e.busy; break;
-    case "steps": ui.op = e.op; ui.steps = e.steps; ui.result = null; ui.lastLine = ""; ui.cancellable = true; break;
+    case "steps": ui.op = e.op; ui.steps = e.steps; ui.result = null; ui.starting = false; ui.lastLine = ""; ui.cancellable = true; break;
     case "step": {
       const s = ui.steps.find(x => x.id === e.id);
       if (s) { s.status = e.status; s.detail = e.detail; }
@@ -121,7 +148,12 @@ function handle(e) {
       break;
     }
     case "output": ui.lastLine = e.line; break;
-    case "operation-end": ui.result = e; break;
+    case "operation-end": ui.result = e; ui.op = e.op; ui.starting = false; break;
+    case "log":
+      ui.logs.push(e.line);
+      if (ui.logs.length > 500) ui.logs.splice(0, ui.logs.length - 500);
+      ui.logDirty = true;
+      break;
     case "dependency-install":
       ui.deps[e.id] = e;
       if (e.status === "done") toast("Installed successfully.");
@@ -141,13 +173,14 @@ const SUCCESS = {
 
 function progressScreen() {
   const r = ui.result;
-  const title = r ? (r.ok ? SUCCESS[r.op] : "Something went wrong") : ({ install: "Installing SolRadar…", update: "Updating SolRadar…", uninstall: "Removing Vencord…", repair: "Repairing…" })[ui.op];
+  const title = r ? (r.ok ? SUCCESS[r.op] : "Something went wrong") : ui.starting ? "Starting…" : ({ install: "Installing SolRadar…", update: "Updating SolRadar…", uninstall: "Removing Vencord…", repair: "Repairing…" })[ui.op];
   const children = [
     el("h1", { class: r ? (r.ok ? "tone-ok" : "tone-error") : "", text: title }),
     el("ul", { class: "steps" }, ui.steps.map(s => el("li", { class: s.status },
       el("span", { class: "icon", text: ICON[s.status] }),
       el("div", {}, el("div", { text: s.label }), s.detail ? el("div", { class: "detail", text: s.detail }) : null)))),
   ];
+  children.push(activityPanel());
   if (!r) {
     children.push(el("div", { class: "bar" }));
     if (ui.lastLine) children.push(el("div", { class: "output", text: ui.lastLine }));
@@ -162,11 +195,11 @@ function progressScreen() {
     children.push(el("p", { text: r.error.message }));
     children.push(el("div", { class: "actions" },
       r.error.kind === "discord-running"
-        ? el("button", { class: "primary", onclick: async () => { if (await confirmDialog("Close Discord and try again?")) send({ type: "run", op: r.op, closeDiscord: true }); }, text: "Close Discord and try again" })
+        ? el("button", { class: "primary", onclick: async () => { if (await confirmDialog("Close Discord and try again?")) runOp(r.op, true); }, text: "Close Discord and try again" })
         : r.error.kind === "checkout-modified"
           ? el("button", { class: "primary", onclick: () => { back(); startOperation("repair"); }, text: "Repair" })
           : r.error.kind === "cancelled" ? null
-          : el("button", { class: "primary", onclick: () => { ui.result = null; send({ type: "run", op: r.op, closeDiscord: false }); }, text: "Try again" }),
+          : el("button", { class: "primary", onclick: () => runOp(r.op, false), text: "Try again" }),
       el("button", { onclick: () => send({ type: "open-logs" }), text: "Open logs" }),
       el("button", { onclick: back, text: "Back" })));
   }
@@ -174,9 +207,25 @@ function progressScreen() {
 }
 
 function back() {
-  ui.op = null; ui.result = null; ui.steps = [];
+  ui.op = null; ui.result = null; ui.steps = []; ui.starting = false;
   send({ type: "refresh" });
   render();
+}
+
+// One persistent <pre> so scroll position survives the full re-render on every poll.
+const logPre = el("pre", { onscroll: () => {
+  ui.logStick = logPre.scrollHeight - logPre.scrollTop - logPre.clientHeight < 8;
+  ui.logTop = logPre.scrollTop;
+} });
+
+function activityPanel() {
+  if (ui.logDirty) { logPre.textContent = ui.logs.join("\n"); ui.logDirty = false; }
+  return el("div", { class: "activity" }, el("h2", { text: "Activity" }), logPre);
+}
+
+function syncLogScroll() {
+  if (!logPre.isConnected) return;
+  logPre.scrollTop = ui.logStick ? logPre.scrollHeight : ui.logTop;
 }
 
 function dependencyCard(d) {
@@ -247,6 +296,8 @@ function footer() {
     el("button", { onclick: () => send({ type: "debug-report", redact: ui.redact }), text: "Generate a debug report" }),
     el("label", {}, box, " Hide personal information"),
     el("button", { onclick: () => send({ type: "open-url", url: HELP_URL }), text: "Help" }),
+    ui.op ? null : el("button", { onclick: () => { ui.showActivity = !ui.showActivity; render(); }, text: ui.showActivity ? "Hide activity" : "Show activity" }),
+    !ui.op && ui.showActivity ? activityPanel() : null,
     el("div", { class: "disclaimer", text: "Unofficial tool — not affiliated with Vencord or Discord." }));
 }
 
@@ -260,6 +311,7 @@ function render() {
   else parts.push(...mainScreen());
   parts.push(footer());
   app.replaceChildren(...parts);
+  syncLogScroll();
 }
 
 async function poll() {

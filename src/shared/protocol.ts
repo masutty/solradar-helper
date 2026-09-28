@@ -11,7 +11,8 @@ export type UiCommand =
     | { type: "install-dependency"; id: DependencyId }
     | { type: "open-url"; url: string }
     | { type: "open-logs" }
-    | { type: "debug-report"; redact: boolean };
+    | { type: "debug-report"; redact: boolean }
+    | { type: "ui-error"; message: string; stack?: string };
 
 export type BackendEvent =
     | { type: "view"; view: ViewModel; busy: boolean }
@@ -19,7 +20,8 @@ export type BackendEvent =
     | { type: "operation-end"; op: OperationKind; ok: boolean; error?: { kind: ErrorKind; message: string } }
     | { type: "dependency-install"; id: DependencyId; status: "running" | "done" | "failed"; message?: string }
     | { type: "report-ready"; path: string }
-    | { type: "fatal"; message: string };
+    | { type: "fatal"; message: string }
+    | { type: "log"; line: string };
 
 export type WorkerMessage =
     | { type: "init"; buffer: SharedArrayBuffer }

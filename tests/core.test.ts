@@ -39,6 +39,19 @@ test("logger writes lines and keeps only the newest logs", () => {
     expect(existsSync(join(dir, "helper-20260110-000000.log"))).toBe(false);
 });
 
+test("createLogger passes each formatted line to onLine", () => {
+    const dir = tempDir();
+    const lines: string[] = [];
+    const log = createLogger(dir, new Date("2026-09-28T20:15:07Z"), 10, l => lines.push(l));
+    log.info("hello", { a: 1 });
+    log.error("bad");
+    expect(lines.length).toBe(2);
+    expect(lines[0]!).toContain("[INFO] hello {\"a\":1}");
+    expect(lines[1]!).toContain("[ERROR] bad");
+    expect(lines[0]!.endsWith("\n")).toBe(false);
+    expect(readFileSync(log.file, "utf8")).toBe(lines.join("\n") + "\n");
+});
+
 test("toHelperError keeps HelperErrors and wraps anything else", () => {
     const e = new HelperError("build", "Build failed", "stderr tail");
     expect(toHelperError(e)).toBe(e);

@@ -23,7 +23,15 @@ declare var self: Worker;
 
 const localAppData = process.env.LOCALAPPDATA ?? "";
 const paths = appPaths(localAppData);
-const logger = createLogger(paths.logs);
+// Log lines written before the queue exists are buffered, then flushed on init.
+const pendingLogLines: string[] = [];
+const logger = createLogger(paths.logs, new Date(), undefined, line => {
+    if (queue) queue.push({ type: "log", line } satisfies BackendEvent);
+    else {
+        pendingLogLines.push(line);
+        if (pendingLogLines.length > 500) pendingLogLines.shift();
+    }
+});
 const runner = createCommandRunner(logger);
 const state = loadState(paths.state);
 
@@ -162,6 +170,9 @@ async function handle(command: UiCommand) {
             return;
         case "debug-report":
             return debugReport(command.redact);
+        case "ui-error":
+            logger.error("ui error", { message: command.message, stack: command.stack });
+            return;
     }
 }
 
@@ -169,6 +180,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
     if (msg.type === "init") {
         queue = new SharedQueue(msg.buffer);
+        for (const line of pendingLogLines.splice(0)) queue.push({ type: "log", line } satisfies BackendEvent);
         logger.info(`SolRadar Helper ${HELPER_VERSION} starting`, { paths });
         refresh()
             .then(() => refreshUpdates())
