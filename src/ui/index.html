@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SolRadar Helper</title></head>
+<body style="font-family: Segoe UI, sans-serif">
+  <button id="ping">Run test job</button>
+  <pre id="out"></pre>
+  <script>
+    const out = document.getElementById("out");
+    document.getElementById("ping").onclick = () => window.__send({ type: "ping" });
+    async function poll() {
+      for (const e of await window.__poll()) out.textContent += JSON.stringify(e) + "\n";
+      setTimeout(poll, 100);
+    }
+    poll();
+  </script>
+</body></html>
