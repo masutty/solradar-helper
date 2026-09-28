@@ -124,6 +124,9 @@ export async function closeDiscord(install: DiscordInstall, runner: CommandRunne
 
 export function launchDiscord(install: DiscordInstall): void {
     const updater = join(install.root, "Update.exe");
-    const cmd = existsSync(updater) ? [updater, "--processStart", install.exe] : [join(install.appDir, install.exe)];
+    // Fallback goes through Explorer so Discord is not our direct child (Bun kills direct children on exit).
+    const cmd = existsSync(updater)
+        ? [updater, "--processStart", install.exe]
+        : [system32("..\\explorer.exe"), join(install.appDir, install.exe)];
     Bun.spawn(cmd, { cwd: install.root, stdin: "ignore", stdout: "ignore", stderr: "ignore" }).unref();
 }

@@ -148,8 +148,9 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
         const wasRunning = await isDiscordRunning(install, deps.runner, deps.env);
         if (wasRunning && needsInject) {
             if (!deps.closeDiscordFirst) throw new HelperError("discord-running", "Please close Discord before continuing.");
+            flags.install = install;
+            flags.closedByUs = true; // set first: a partial close must still relaunch Discord on failure
             if (!(await closeDiscord(install, deps.runner, deps.env))) throw new HelperError("discord-running", "Discord could not be closed. Close it manually and try again.");
-            flags.closedByUs = true;
         }
         flags.install = install;
         return { install, wasRunning, needsInject };
@@ -216,10 +217,11 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
     await step("inject", async () => {
         if (!needsInject) return skip("inject", "Discord is already patched");
         if (await isDiscordRunning(install, deps.runner, deps.env)) {
-            if (!deps.closeDiscordFirst || !(await closeDiscord(install, deps.runner, deps.env))) {
+            if (!deps.closeDiscordFirst) throw new HelperError("discord-running", "Please close Discord before continuing.");
+            flags.closedByUs = true;
+            if (!(await closeDiscord(install, deps.runner, deps.env))) {
                 throw new HelperError("discord-running", "Please close Discord before continuing.");
             }
-            flags.closedByUs = true;
         }
         ensureOk(await inject({ ...ctx, signal: undefined }, paths, install.branch), "inject", "Vencord was built successfully, but Discord could not be patched.");
     });
@@ -231,7 +233,7 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
     });
 
     await step("launch", async () => {
-        if (wasRunning && !needsInject) { await closeDiscord(install, deps.runner, deps.env); flags.closedByUs = true; }
+        if (wasRunning && !needsInject) { flags.closedByUs = true; await closeDiscord(install, deps.runner, deps.env); }
         (deps.launch ?? launchDiscord)(install);
         flags.closedByUs = false;
     });
