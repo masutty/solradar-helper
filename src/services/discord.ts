@@ -78,6 +78,7 @@ export interface DiscordProcess {
 }
 
 const LIST_SCRIPT =
+    "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); " +
     "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'Discord*' } | " +
     "Select-Object ProcessId,ExecutablePath | ConvertTo-Json -Compress";
 

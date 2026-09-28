@@ -62,3 +62,11 @@ test("dist backup and restore", () => {
     expect(readFileSync(join(p.checkout, "dist", "patcher.js"), "utf8")).toBe("good");
     expect(existsSync(join(p.checkout, "dist", "junk.js"))).toBe(false);
 });
+
+test("restoreDist without a backup leaves the existing dist intact", () => {
+    const p = appPaths(tempDir());
+    mkdirSync(join(p.checkout, "dist"), { recursive: true });
+    writeFileSync(join(p.checkout, "dist", "patcher.js"), "good");
+    restoreDist(p);
+    expect(readFileSync(join(p.checkout, "dist", "patcher.js"), "utf8")).toBe("good");
+});

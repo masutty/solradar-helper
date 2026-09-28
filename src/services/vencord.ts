@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CommandResult } from "../core/commands";
 import { HelperError } from "../core/errors";
@@ -77,6 +77,10 @@ export function backupDist(paths: AppPaths): boolean {
 }
 
 export function restoreDist(paths: AppPaths): void {
+    if (!existsSync(paths.distBackup)) return; // never delete a working dist without a backup
+    const staged = `${distOf(paths)}.restore`;
+    rmSync(staged, { recursive: true, force: true });
+    cpSync(paths.distBackup, staged, { recursive: true });
     rmSync(distOf(paths), { recursive: true, force: true });
-    cpSync(paths.distBackup, distOf(paths), { recursive: true });
+    renameSync(staged, distOf(paths));
 }

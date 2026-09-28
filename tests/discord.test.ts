@@ -2,9 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-    compareAppDirs, findDiscordInstalls, parseProcessJson, pickInstall, processesOf, readInjection,
+    compareAppDirs, findDiscordInstalls, listDiscordProcesses, parseProcessJson, pickInstall, processesOf, readInjection,
 } from "../src/services/discord";
-import { tempDir } from "./helpers";
+import { createCommandRunner } from "../src/core/commands";
+import { createLogger } from "../src/core/logger";
+import { fakeRunner, tempDir } from "./helpers";
 
 function fakeDiscord(local: string, folder: string, versions: string[]) {
     for (const v of versions) mkdirSync(join(local, folder, `app-${v}`, "resources"), { recursive: true });
@@ -68,4 +70,20 @@ test("processesOf only matches processes inside the install root", () => {
         { pid: 3, path: "c:\\l\\discord\\Update.exe" },
     ];
     expect(processesOf(install, procs).map(p => p.pid)).toEqual([1, 3]);
+});
+
+const UTF8_PREFIX = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); ";
+
+test("process listing forces UTF-8 output from PowerShell", async () => {
+    const { runner, calls } = fakeRunner(() => ({ stdout: "" }));
+    await listDiscordProcesses(runner, {});
+    const args = calls[0]!.args;
+    expect(args[args.indexOf("-Command") + 1]!.startsWith(UTF8_PREFIX)).toBe(true);
+});
+
+test("real PowerShell round-trips non-ASCII output with the UTF-8 prefix", async () => {
+    const runner = createCommandRunner(createLogger(tempDir()));
+    const ps = join(process.env.SystemRoot ?? "C:\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    const r = await runner.run({ cmd: ps, args: ["-NoProfile", "-NonInteractive", "-Command", UTF8_PREFIX + "Write-Output 'Jo\u00e3o'"], env: process.env as Record<string, string>, timeoutMs: 30_000 });
+    expect(r.stdout).toContain("Jo\u00e3o");
 });
