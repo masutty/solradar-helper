@@ -42,8 +42,13 @@ export const explorer = () => system32("..\\explorer.exe");
 
 // Bun kills direct children when the parent exits. These hand-off tools return quickly,
 // so run them synchronously: the caller may exit right after.
+export const HANDOFF_SPAWN_OPTIONS = { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: false } as const;
+
 function handOff(cmd: string[]) {
-    Bun.spawnSync(cmd, { stdin: "ignore", stdout: "ignore", stderr: "ignore", windowsHide: true });
+    // windowsHide must be false: explorer.exe and rundll32.exe are GUI tools that the user
+    // expects to see (e.g., "Open logs", "reveal file"). Setting windowsHide: true hides
+    // the window, making these operations appear to do nothing.
+    Bun.spawnSync(cmd, HANDOFF_SPAWN_OPTIONS);
 }
 
 export function openUrl(url: string): void {
