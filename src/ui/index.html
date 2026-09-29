@@ -358,13 +358,78 @@ function idleSegments() {
   return segs;
 }
 
+function phasesFor(op, steps) {
+  // Map step IDs to phase names
+  const stepToPhase = {
+    requirements: "Prepare", discord: "Prepare",
+    vencord: "Download", solradar: "Download",
+    packages: "Build", build: "Build",
+    inject: "Patch", verify: "Patch",
+    uninject: "Remove",
+    launch: "Start",
+    repair: "Repair",
+  };
+
+  // Override verify for uninstall to be Remove
+  const phaseOverrides = {
+    uninstall: { verify: "Remove" }
+  };
+
+  // Phase order
+  const phaseOrder = ["Prepare", "Download", "Build", "Patch", "Remove", "Start", "Repair"];
+
+  // Collect phases and their steps
+  const phaseMap = {};
+  for (const step of steps) {
+    let phase = stepToPhase[step.id];
+    if (phaseOverrides[op] && phaseOverrides[op][step.id]) {
+      phase = phaseOverrides[op][step.id];
+    }
+    if (!phase) continue;
+    if (!phaseMap[phase]) phaseMap[phase] = [];
+    phaseMap[phase].push(step);
+  }
+
+  // Build phases in order, only including those that have steps
+  const phases = [];
+  for (const phaseName of phaseOrder) {
+    if (!phaseMap[phaseName]) continue;
+    const phaseSteps = phaseMap[phaseName];
+
+    // Determine phase status
+    let status = "pending";
+    const hasFailure = phaseSteps.some(s => s.status === "failed");
+    const hasRunning = phaseSteps.some(s => s.status === "running");
+    const allSkipped = phaseSteps.every(s => s.status === "skipped");
+    const hasDone = phaseSteps.some(s => s.status === "done");
+    const allDoneOrSkipped = phaseSteps.every(s => s.status === "done" || s.status === "skipped");
+
+    if (hasFailure) status = "failed";
+    else if (hasRunning) status = "running";
+    else if (allSkipped) status = "skipped";
+    else if (allDoneOrSkipped && hasDone) status = "done";
+    else status = "pending";
+
+    // Determine value text
+    const value = status === "running" ? "in progress" : status === "failed" ? "failed" : status === "skipped" ? "skipped" : "";
+
+    phases.push({
+      name: phaseName,
+      status: status,
+      value: value,
+    });
+  }
+
+  return phases;
+}
+
 function opSegments() {
   const cancelled = isCancelled();
-  return ui.steps.map(s => {
-    const status = cancelled && s.status === "running" ? "pending" : s.status;
+  const phases = phasesFor(ui.op, ui.steps);
+  return phases.map(p => {
+    const status = cancelled && p.status === "running" ? "pending" : p.status;
     const cls = { done: "ok", running: "run", failed: "err", skipped: "skip", pending: "" }[status];
-    const value = { running: "in progress", failed: "failed", skipped: "skipped" }[status] || "";
-    return seg(cls, s.label, value, status === "failed" ? "err" : "");
+    return seg(cls, p.name, p.value, status === "failed" ? "err" : "");
   });
 }
 
