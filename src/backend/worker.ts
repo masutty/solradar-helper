@@ -1,4 +1,5 @@
 import { runOperation, type OperationKind } from "../app/operations";
+import { applySimulations, isSimulationId, SIMULATIONS, type SimulationId } from "../app/simulations";
 import { takeSnapshot, type Snapshot } from "../app/snapshot";
 import { deriveView } from "../app/view";
 import { createCommandRunner } from "../core/commands";
@@ -40,6 +41,7 @@ let env: ToolEnv = process.env as ToolEnv;
 let snapshot: Snapshot | undefined;
 let updates: UpdateInfo | null = null;
 let current: AbortController | null = null;
+const simulations = new Set<SimulationId>();
 const installingDeps = new Set<DependencyId>();
 
 const ALLOWED_URLS = new Set([
@@ -51,7 +53,9 @@ const emit = (e: BackendEvent) => queue?.push(e);
 const ctx = () => ({ runner, env });
 
 function pushView() {
-    if (snapshot) emit({ type: "view", view: deriveView(snapshot, updates), busy: current !== null });
+    if (!snapshot) return;
+    const shown = applySimulations(snapshot, updates, simulations);
+    emit({ type: "view", view: deriveView(shown.snapshot, shown.updates, [...simulations]), busy: current !== null });
 }
 
 // Lines produced by refresh (startup and "check again") are background noise in the activity panel.
@@ -82,13 +86,52 @@ async function refresh() {
     }
 }
 
+// Update checks are background work too: their commands stay out of the default activity view.
 async function refreshUpdates() {
     if (!snapshot) return;
-    updates = await checkUpdates(ctx(), {
-        vencordCommit: snapshot.vencord.commit,
-        pluginCommit: snapshot.solradar.commit,
-        pluginVersion: snapshot.solradar.version,
-    });
+    refreshDepth++;
+    syncBackground();
+    try {
+        updates = await checkUpdates(ctx(), {
+            vencordCommit: snapshot.vencord.commit,
+            pluginCommit: snapshot.solradar.commit,
+            pluginVersion: snapshot.solradar.version,
+        });
+        pushView();
+    } finally {
+        refreshDepth--;
+        syncBackground();
+    }
+}
+
+const short = (c?: string) => c?.slice(0, 7) ?? "unknown";
+
+// Reads the real state (never the simulated one) and prints it as one clear block.
+async function showVersions() {
+    if (current) return;
+    emit({ type: "show-activity" });
+    await refresh();
+    await refreshUpdates();
+    const s = snapshot;
+    if (!s) return;
+    const dep = (id: string) => s.dependencies.find(d => d.id === id);
+    const u = updates;
+    const lines = [
+        "Versions",
+        `  Helper: ${HELPER_VERSION}${u?.helper.latest ? ` (latest ${u.helper.latest})` : " (latest unknown)"}`,
+        `  Git: ${dep("git")?.version ?? "not found"}`,
+        `  Node: ${dep("node")?.version ?? "not found"}`,
+        `  Vencord: ${short(s.vencord.commit)} (latest ${short(u?.vencord.remote)})`,
+        `  SolRadar: ${s.solradar.version ?? "unknown"} / ${short(s.solradar.commit)} (latest ${u?.solradar.remoteVersion ?? "unknown"} / ${short(u?.solradar.remoteCommit)})`,
+        `  Discord: ${s.discord.selected?.label ?? "not found"}, ${s.discord.injection === "injected" ? "patched by SolRadar" : s.discord.injection === "injected-elsewhere" ? "using a different Vencord" : "not patched"}`,
+    ];
+    for (const text of lines) logger.log({ level: "info", kind: "msg", text, background: false });
+}
+
+function simulate(id: SimulationId, on: boolean) {
+    if (on) simulations.add(id); else simulations.delete(id);
+    const label = SIMULATIONS.find(x => x.id === id)!.label;
+    logger.log({ level: "info", kind: "msg", text: `Simulation ${on ? "on" : "off"}: ${label}`, background: false });
     pushView();
 }
 
@@ -208,6 +251,22 @@ async function handle(command: UiCommand) {
             return;
         case "open-logs":
             openFolder(paths.logs);
+            return;
+        case "open-root":
+            openFolder(paths.root);
+            return;
+        case "show-versions":
+            return showVersions();
+        case "simulate":
+            if (isSimulationId(command.id)) simulate(command.id, !!command.on);
+            return;
+        case "simulate-clear":
+            simulations.clear();
+            logger.log({ level: "info", kind: "msg", text: "Simulations cleared", background: false });
+            pushView();
+            return;
+        case "simulate-error":
+            logger.log({ level: "error", kind: "msg", text: "Simulated error: this is what an error looks like", background: false });
             return;
         case "debug-report":
             return debugReport(command.redact);

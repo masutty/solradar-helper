@@ -2,6 +2,7 @@ import { HELPER_RELEASES_URL } from "../core/constants";
 import { DEPENDENCIES, type DependencyId, type DependencyState } from "../services/dependencies";
 import type { DiscordBranch } from "../services/discord";
 import { isNewerVersion, updateAvailable, type UpdateInfo } from "../services/updates";
+import type { SimulationId } from "./simulations";
 import type { Snapshot } from "./snapshot";
 
 export type Tone = "ok" | "warn" | "error" | "neutral";
@@ -40,9 +41,11 @@ export interface ViewModel {
     helperUpdate?: { latest: string; url: string };
     actions: { install: boolean; update: boolean; uninstall: boolean; repair: boolean };
     advanced: { build: boolean; inject: boolean };
+    /** Active test scenarios (display-only overrides). */
+    simulations: SimulationId[];
 }
 
-export function deriveView(s: Snapshot, u: UpdateInfo | null): ViewModel {
+export function deriveView(s: Snapshot, u: UpdateInfo | null, simulations: SimulationId[] = []): ViewModel {
     const { discord, vencord, solradar } = s;
     const depsOk = s.dependencies.every(d => d.state === "ok");
     const hasDiscord = !!discord.selected;
@@ -126,6 +129,7 @@ export function deriveView(s: Snapshot, u: UpdateInfo | null): ViewModel {
             uninstall: hasDiscord && ours,
             repair: modified,
         },
+        simulations,
         advanced: {
             build: depsOk && (vencord.state === "ready" || vencord.state === "modified") && (solradar.state === "ready" || solradar.state === "modified"),
             inject: hasDiscord && vencord.built,

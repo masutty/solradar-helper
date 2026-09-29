@@ -80,3 +80,12 @@ test("runner logs the command, its output and maps exit codes to levels", async 
     await runner.run({ cmd: bun, args: ["-e", "setTimeout(() => {}, 30000)"], env }, { signal: ac.signal });
     expect(entries.at(-1)).toMatchObject({ level: "warn", text: "cancelled" });
 });
+
+test("activity entries hide the working directory; the log file keeps it", async () => {
+    const entries: LogEntry[] = [];
+    const dir = tempDir();
+    const logger = createLogger(tempDir(), new Date(), 10, e => entries.push(e));
+    await createCommandRunner(logger).run({ cmd: bun, args: ["-e", "0"], cwd: dir, env });
+    expect(entries[0]!.text).not.toContain("(in ");
+    expect(readFileSync(logger.file, "utf8")).toContain(`(in ${dir})`);
+});

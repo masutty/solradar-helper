@@ -21,6 +21,8 @@ export interface LogInput {
     data?: unknown;
     /** Overrides the logger's current `background` flag for this line. */
     background?: boolean;
+    /** Appended to the log file line only, never shown in the activity panel. */
+    fileSuffix?: string;
 }
 
 export interface Logger {
@@ -64,10 +66,10 @@ export function createLogger(dir: string, now: Date = new Date(), keep = LOG_RET
     const logger: Logger = {
         file,
         background: false,
-        log({ level, kind, text, data, background }) {
+        log({ level, kind, text, data, background, fileSuffix }) {
             const extra = extraText(data);
             const filePrefix = kind === "cmd" ? "exec " : kind === "out" ? "  | " : "";
-            const fileLine = `${new Date().toISOString()} [${level.toUpperCase()}] ${filePrefix}${text}${extra ? " " + extra : ""}`;
+            const fileLine = `${new Date().toISOString()} [${level.toUpperCase()}] ${filePrefix}${text}${fileSuffix ?? ""}${extra ? " " + extra : ""}`;
             appendFileSync(file, fileLine + "\n");
             // The panel gets only the first lines of long technical detail; the file keeps everything.
             const shown = extra && (level === "error" || level === "warn") ? extra.split(/\r?\n/).filter(l => l.trim()).slice(0, ENTRY_DETAIL_LINES).join("\n") : "";

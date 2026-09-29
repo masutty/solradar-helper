@@ -1,4 +1,5 @@
 import type { OperationEvent, OperationKind } from "../app/operations";
+import type { SimulationId } from "../app/simulations";
 import type { ViewModel } from "../app/view";
 import type { ErrorKind } from "../core/errors";
 import type { LogEntry } from "../core/logger";
@@ -12,6 +13,11 @@ export type UiCommand =
     | { type: "install-dependency"; id: DependencyId }
     | { type: "open-url"; url: string }
     | { type: "open-logs" }
+    | { type: "open-root" }
+    | { type: "show-versions" }
+    | { type: "simulate"; id: SimulationId; on: boolean }
+    | { type: "simulate-clear" }
+    | { type: "simulate-error" }
     | { type: "debug-report"; redact: boolean }
     | { type: "ui-error"; message: string; stack?: string };
 
@@ -21,6 +27,7 @@ export type BackendEvent =
     | { type: "operation-end"; op: OperationKind; ok: boolean; error?: { kind: ErrorKind; message: string } }
     | { type: "dependency-install"; id: DependencyId; status: "running" | "done" | "failed"; message?: string }
     | { type: "report-ready"; path: string }
+    | { type: "show-activity" }
     | { type: "fatal"; message: string }
     | { type: "log"; entry: LogEntry };
 

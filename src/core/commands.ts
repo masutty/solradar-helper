@@ -33,7 +33,7 @@ export function system32(file: string, env: Record<string, string | undefined> =
 
 function describe(spec: CommandSpec): string {
     const quote = (s: string) => (/[\s"]/.test(s) ? JSON.stringify(s) : s);
-    return [spec.cmd, ...spec.args].map(quote).join(" ") + (spec.cwd ? `  (in ${spec.cwd})` : "");
+    return [spec.cmd, ...spec.args].map(quote).join(" ");
 }
 
 function pathOf(env: Record<string, string | undefined>): string {
@@ -72,7 +72,7 @@ export function createCommandRunner(logger: Logger): CommandRunner {
     return {
         async run(spec, options = {}) {
             const env = spec.env ?? (process.env as Record<string, string>);
-            logger.log({ level: "debug", kind: "cmd", text: describe(spec) });
+            logger.log({ level: "debug", kind: "cmd", text: describe(spec), fileSuffix: spec.cwd ? `  (in ${spec.cwd})` : undefined });
             const exe = isAbsolute(spec.cmd) ? spec.cmd : Bun.which(spec.cmd, { PATH: pathOf(env) });
             if (!exe) {
                 logger.warn(`command not found: ${spec.cmd}`);
