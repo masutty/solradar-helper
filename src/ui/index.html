@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SolRadar Helper</title>
+<style>
+  :root {
+    --bg: #f4f5f8; --panel: #ffffff; --raise: #eceef3; --line: #dcdfe6; --fg: #1d2330; --muted: #5d6675; --dim: #a3aab8;
+    --accent: #4b54d6; --accent-text: #ffffff; --ok: #1f8a4c; --warn: #b26a00; --err: #c62828; --cyan: #0e6c8f;
+    --log-bg: #fafbfc; --time: #8a93a3; --err-bg: rgba(198,40,40,.07); --err-line: rgba(198,40,40,.4); --shadow: 0 10px 26px rgba(20,25,40,.18);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171c; --panel: #1c1f26; --raise: #242832; --line: #2d323d; --fg: #e6e8ee; --muted: #8b93a3; --dim: #4a5060;
+      --accent: #7c86ff; --accent-text: #0e1030; --ok: #4cc38a; --warn: #f0b429; --err: #f06a6a; --cyan: #5cc8e6;
+      --log-bg: #0f1114; --time: #5b6272; --err-bg: rgba(240,106,106,.08); --err-line: rgba(240,106,106,.45); --shadow: 0 12px 28px rgba(0,0,0,.45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--fg); overflow: hidden; }
+  main { height: 100%; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 10px; min-height: 0; }
+  button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--raise); color: var(--fg); padding: 6px 12px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 4px 8px; }
+  button.ghost:hover:not(:disabled) { color: var(--fg); background: var(--raise); }
+  button.menubtn { font-size: 16px; line-height: 1; padding: 4px 9px; }
+  button.link { background: none; border: 0; padding: 0; color: var(--accent); }
+  button.link:hover:not(:disabled) { text-decoration: underline; }
+  .row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .grow { flex: 1; min-width: 0; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: currentColor; }
+  .dot.run { color: var(--accent); } .dot.muted { color: var(--dim); }
+  .title { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { flex: none; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); }
+  .notice { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 5px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+  .headwrap { position: relative; }
+  .fatal { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--err-line); background: var(--err-bg); color: var(--err); border-radius: 6px; }
+  .bar { height: 3px; border-radius: 2px; background: var(--line); overflow: hidden; flex: none; }
+  .bar::after { content: ""; display: block; width: 35%; height: 100%; background: var(--accent); animation: slide 1.3s ease-in-out infinite; }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+  @media (prefers-reduced-motion: reduce) { .bar::after { animation: none; width: 100%; opacity: .5; } }
+
+  .strip { display: grid; gap: 4px; flex: none; }
+  .f-seg { display: grid; gap: 4px; font-size: 11px; color: var(--muted); min-width: 0; }
+  .f-seg i { height: 4px; border-radius: 2px; background: var(--line); }
+  .f-seg.ok i { background: var(--ok); } .f-seg.warn i { background: var(--warn); } .f-seg.err i { background: var(--err); }
+  .f-seg.skip i { background: var(--dim); opacity: .6; }
+  .f-seg.run i { background: linear-gradient(90deg, var(--accent) 50%, var(--line) 50%); }
+  .ico { flex: none; display: block; }
+  .f-seg .nm { display: flex; align-items: center; gap: 5px; }
+  .f-seg span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .f-seg b { color: var(--fg); font-weight: 500; }
+  .f-seg .warn { color: var(--warn); } .f-seg .err { color: var(--err); }
+
+  .selfsteps { flex: none; }
+  .selfsteps ol { margin: 6px 0 6px; padding-left: 20px; }
+  .selfsteps .acts { display: flex; gap: 8px; }
+
+  .tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 11.5px; color: var(--muted); flex: none; }
+  .tools .sws { display: flex; gap: 14px; }
+  .sw { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; color: var(--muted); font-size: 11.5px; }
+  .sw i { width: 24px; height: 13px; border-radius: 7px; background: var(--line); position: relative; }
+  .sw i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); transition: left .12s; }
+  .sw.on i { background: var(--accent); } .sw.on i::after { left: 13px; background: #fff; }
+
+  .fl { flex: 1; min-height: 0; overflow: auto; background: var(--log-bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 0; font-size: 12.5px; }
+  .fl .empty { padding: 3px 10px; color: var(--muted); }
+  .fl-g { padding: 3px 10px; }
+  .fl-h { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .fl-h .t { font: 11px "Cascadia Mono", Consolas, monospace; color: var(--time); flex: none; }
+  .fl-h .ic { width: 12px; text-align: center; flex: none; font-weight: 700; }
+  .fl-h .x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fl-h .x.bold { font-weight: 600; }
+  .fl-h .n { font-size: 11px; color: var(--muted); flex: none; background: none; border: 0; padding: 0; }
+  .fl-h .n:hover { color: var(--fg); }
+  .fl-cmd { margin: 3px 0 2px 58px; font: 11px/1.55 "Cascadia Mono", Consolas, monospace; color: var(--muted); border-left: 1px solid var(--line); padding-left: 8px; }
+  .fl-cmd p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .fl-cmd .c { color: var(--cyan); }
+  .errbox { margin: 4px 10px; padding: 8px 10px; border: 1px solid var(--err-line); background: var(--err-bg); border-radius: 6px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+  .errbox b { color: var(--err); }
+
+  footer { flex: none; font-size: 11px; color: var(--muted); }
+
+  .menu { position: absolute; right: 0; top: calc(100% + 4px); width: 230px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: var(--shadow); z-index: 5; font-size: 12.5px; }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+  .menu .note { padding: 4px 10px; font-size: 11px; color: var(--muted); }
+  .mi { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 0; border-radius: 5px; padding: 6px 10px; color: var(--fg); }
+  .mi:hover:not(:disabled), .mi:focus-visible { background: var(--raise); outline: none; }
+  .mi.danger { color: var(--err); }
+  .mi .mt { display: grid; min-width: 0; }
+  .mi small { color: var(--muted); font-size: 11px; white-space: normal; }
+  .mi .r { flex: none; color: var(--muted); }
+  .mi .r.on { color: var(--accent); font-weight: 700; }
+  .has-sub > .sub { display: none; position: absolute; right: calc(100% - 2px); top: -1px; width: 250px; max-height: calc(100vh - 60px); overflow: auto; }
+  .has-sub:hover > .sub, .has-sub.open > .sub, .has-sub:focus-within > .sub { display: block; }
+  .menu:not(.sub):hover .has-sub.open:not(:hover):not(:focus-within) > .sub { display: none; }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  .overlay .dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--fg); max-width: 460px; width: 100%; padding: 14px 16px; box-shadow: var(--shadow); }
+  .overlay .dialog p { margin: 0 0 8px; white-space: pre-wrap; }
+  .overlay .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 8px; z-index: 11; }
+</style>
+</head>
+<body>
+<main id="app">Loading…</main>
+<script>
+"use strict";
+// Forward UI errors to the backend log, so problems inside the window are never silent.
+// Loop-proof: binding-parse errors are ignored, errors raised while forwarding are never forwarded,
+// and at most 5 errors per 10 s are forwarded.
+let forwarding = false;
+const forwardTimes = [];
+function reportError(err) {
+  const message = err && err.message ? String(err.message) : String(err);
+  const stack = err && err.stack ? String(err.stack) : undefined;
+  if (message.includes("Failed to parse binding result as JSON")) return;
+  if (forwarding) return;
+  const now = Date.now();
+  while (forwardTimes.length && now - forwardTimes[0] > 10000) forwardTimes.shift();
+  if (forwardTimes.length >= 5) return;
+  forwardTimes.push(now);
+  forwarding = true;
+  try {
+    const p = window.__send({ type: "ui-error", message, stack });
+    if (p && typeof p.catch === "function") p.catch(() => {});
+  } catch (_) { /* nothing else we can do */ }
+  finally { forwarding = false; }
+  try {
+    ui.fatal = "Something went wrong in the window. Open the logs for details.";
+    render();
+  } catch (_) { /* rendering itself is broken */ }
+}
+window.onerror = (message, source, line, col, error) => {
+  reportError(error || new Error(`${message} (${source}:${line}:${col})`));
+};
+window.addEventListener("unhandledrejection", ev => reportError(ev.reason));
+
+const VENCORD_INSTALLER_URL = "https://vencord.dev/download/";
+const DISCORD_DOWNLOAD_URL = "https://discord.com/download";
+const HELP_URL = "https://github.com/masutty/solradar-helper#readme";
+
+const ui = {
+  view: null, busy: false, op: null, steps: [], cancellable: true, result: null, starting: false,
+  deps: {}, showManual: false, redact: true, fatal: null,
+  logs: [], seq: 0, showCommands: false, showBackground: false, groupOpen: {}, logStick: true, logTop: 0,
+  menu: false, menuSub: null, focusId: null,
+};
+const send = cmd => {
+  const p = window.__send(cmd);
+  if (p && typeof p.catch === "function") p.catch(() => {});
+  return p;
+};
+
+function el(tag, props, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k.startsWith("on")) node.addEventListener(k.slice(2), ev => {
+      try {
+        const r = v(ev);
+        if (r && typeof r.then === "function") r.then(undefined, reportError);
+      } catch (err) { reportError(err); }
+    });
+    else if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else node.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return node;
+}
+
+// ---- icons -----------------------------------------------------------------------------------
+// Static inline SVG (Simple Icons, CC0, plus the SolRadar radar mark). Never built from backend data.
+const ICONS = {
+  git: "<path fill=\"currentColor\" d=\"M13.09 23.549a1.54 1.54 0 0 1-2.18 0L.451 13.089a1.54 1.54 0 0 1 0-2.179l7.191-7.19 2.733 2.733a1.85 1.85 0 0 0 .964 2.326v6.66a1.849 1.849 0 1 0 1.54 0V8.957l2.508 2.508a1.85 1.85 0 1 0 1.09-1.09l-2.634-2.634a1.85 1.85 0 0 0-2.378-2.377L8.73 2.63 10.91.451a1.54 1.54 0 0 1 2.179 0l10.459 10.46a1.54 1.54 0 0 1 0 2.179z\"/>",
+  node: "<path fill=\"currentColor\" d=\"M11.998,24c-0.321,0-0.641-0.084-0.922-0.247l-2.936-1.737c-0.438-0.245-0.224-0.332-0.08-0.383 c0.585-0.203,0.703-0.25,1.328-0.604c0.065-0.037,0.151-0.023,0.218,0.017l2.256,1.339c0.082,0.045,0.197,0.045,0.272,0l8.795-5.076 c0.082-0.047,0.134-0.141,0.134-0.238V6.921c0-0.099-0.053-0.192-0.137-0.242l-8.791-5.072c-0.081-0.047-0.189-0.047-0.271,0 L3.075,6.68C2.99,6.729,2.936,6.825,2.936,6.921v10.15c0,0.097,0.054,0.189,0.139,0.235l2.409,1.392 c1.307,0.654,2.108-0.116,2.108-0.89V7.787c0-0.142,0.114-0.253,0.256-0.253h1.115c0.139,0,0.255,0.112,0.255,0.253v10.021 c0,1.745-0.95,2.745-2.604,2.745c-0.508,0-0.909,0-2.026-0.551L2.28,18.675c-0.57-0.329-0.922-0.945-0.922-1.604V6.921 c0-0.659,0.353-1.275,0.922-1.603l8.795-5.082c0.557-0.315,1.296-0.315,1.848,0l8.794,5.082c0.57,0.329,0.924,0.944,0.924,1.603 v10.15c0,0.659-0.354,1.273-0.924,1.604l-8.794,5.078C12.643,23.916,12.324,24,11.998,24z M19.099,13.993 c0-1.9-1.284-2.406-3.987-2.763c-2.731-0.361-3.009-0.548-3.009-1.187c0-0.528,0.235-1.233,2.258-1.233 c1.807,0,2.473,0.389,2.747,1.607c0.024,0.115,0.129,0.199,0.247,0.199h1.141c0.071,0,0.138-0.031,0.186-0.081 c0.048-0.054,0.074-0.123,0.067-0.196c-0.177-2.098-1.571-3.076-4.388-3.076c-2.508,0-4.004,1.058-4.004,2.833 c0,1.925,1.488,2.457,3.895,2.695c2.88,0.282,3.103,0.703,3.103,1.269c0,0.983-0.789,1.402-2.642,1.402 c-2.327,0-2.839-0.584-3.011-1.742c-0.02-0.124-0.126-0.215-0.253-0.215h-1.137c-0.141,0-0.254,0.112-0.254,0.253 c0,1.482,0.806,3.248,4.655,3.248C17.501,17.007,19.099,15.91,19.099,13.993z\"/>",
+  discord: "<path fill=\"currentColor\" d=\"M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z\"/>",
+  vencord: "<path fill=\"currentColor\" d=\"M18.465 19.458a1.68 1.68 0 0 1 1.268-.221 1.68 1.68 0 0 1 .534 3.061 6.4 6.4 0 0 1-1.614.735 6.3 6.3 0 0 1-2.73.191 6.3 6.3 0 0 1-2.211-.764 6.4 6.4 0 0 1-1.735-1.453 6.57 6.57 0 0 1-1.529-4.22q0-.495.073-.982a6.6 6.6 0 0 1 .755-2.237 6.6 6.6 0 0 1 1.43-1.772 6.5 6.5 0 0 1 1.933-1.167 6.3 6.3 0 0 1 3.207-.354c.95.141 1.856.496 2.65 1.04a6.5 6.5 0 0 1 1.885 2.004 1.681 1.681 0 1 1-2.885 1.73 3.1 3.1 0 0 0-.903-.96 2.98 2.98 0 0 0-2.745-.321 3.1 3.1 0 0 0-.93.561 3.2 3.2 0 0 0-.698.864 3.3 3.3 0 0 0-.409 1.595 3.2 3.2 0 0 0 .747 2.062 3 3 0 0 0 .823.69 2.97 2.97 0 0 0 1.476.39c.284 0 .567-.041.84-.122a3 3 0 0 0 .768-.35M.64 5.584l4.317 9.217c.45.962 1.647 1.686 2.783 1.531s2.222-1.166 2.48-2.196l2.566-10.254c.258-1.03-.41-1.897-1.752-1.715-1.447.118-2.347 1.29-2.56 2.33L7.408 9.671c-.096.468-.337.496-.538.062L4.696 5.035c-.447-.964-1.564-1.777-2.74-1.617S.19 4.622.64 5.584M11.495.011q-.608.025-1.222.115a11.93 11.93 0 0 0-5.971 2.67A4.2 4.2 0 0 1 5.79 4.529L6.791 6.69l.502-2.435C7.603 2.744 8.87 1.152 10.9.97q.163-.021.327-.028c.828-.03 1.626.231 2.163.803.613.654.774 1.6.566 2.43l-1.6 6.397a7.7 7.7 0 0 1 1.861-1.035 7.5 7.5 0 0 1 2.836-.5 8 8 0 0 1 .963.08 7.5 7.5 0 0 1 3.14 1.232 7.65 7.65 0 0 1 2.228 2.369c.287.48.415 1.012.4 1.537.245-1.28.284-2.622.086-3.984C22.978 4.128 17.567-.25 11.495.011M.584 8.307a11.94 11.94 0 0 0-.456 5.418c.193 1.328.598 2.574.835 3.04.188.37.254.993.149 1.394l-.755 2.855c-.471 1.785.592 2.842 2.374 2.357l2.663-.723c.399-.109 1.016-.032 1.376.172 1.578.89 4.228 1.447 6.957 1.05l.146-.023a8 8 0 0 1-.743-.37v-.001a7.6 7.6 0 0 1-2.051-1.718 7.75 7.75 0 0 1-1.797-4.665c-.42.217-.884.367-1.38.434-1.746.238-3.337-.72-4.037-2.215zM17 14.743a1.8 1.8 0 0 0-.732.117 2 2 0 0 0-.58.351 2 2 0 0 0-.442.547 2.16 2.16 0 0 0-.264 1.031 2.04 2.04 0 0 0 .474 1.31 1.9 1.9 0 0 0 .506.424 1.8 1.8 0 0 0 .893.236h.002a1.8 1.8 0 0 0 .505-.073 2 2 0 0 0 .474-.216l.001-.001a2.86 2.86 0 0 1 2.15-.375 2.86 2.86 0 0 1 1.644 1.051 12 12 0 0 0 1.861-3.705c-.232.48-.6.898-1.085 1.19a2.87 2.87 0 0 1-3.916-.979 1.9 1.9 0 0 0-.56-.596 1.8 1.8 0 0 0-.932-.313z\"/>",
+  solradar: "<path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" d=\"M12 11.9996L5.00197 6.33546C4.57285 5.98813 3.93869 6.05182 3.63599 6.5135C3.06678 7.38163 2.62413 8.35389 2.34078 9.41136C0.911364 14.746 4.07719 20.2294 9.41185 21.6588C14.7465 23.0882 20.2299 19.9224 21.6593 14.5877C23.0887 9.25308 19.9229 3.76971 14.5882 2.34029C11.9556 1.63489 9.28684 2.04857 7.0869 3.28972\"/>",
+};
+const SVG_NS = "http://www.w3.org/2000/svg";
+function icon(key, size) {
+  const markup = ICONS[key];
+  if (!markup) return null;
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", "ico");
+  svg.innerHTML = markup;
+  return svg;
+}
+
+function confirmDialog(text) {
+  return new Promise(resolve => {
+    const done = answer => { overlay.remove(); resolve(answer); };
+    const overlay = el("div", { class: "overlay" },
+      el("div", { class: "dialog", role: "dialog" },
+        el("p", { text }),
+        el("div", { class: "actions" },
+          el("button", { onclick: () => done(false), text: "Cancel" }),
+          el("button", { class: "primary", onclick: () => done(true), text: "Continue" }))));
+    document.body.append(overlay);
+  });
+}
+
+// Show the progress state right away; the backend's "steps" event replaces this placeholder.
+function runOp(op, closeDiscord) {
+  ui.result = null; ui.op = op; ui.steps = []; ui.cancellable = true; ui.starting = true; ui.menu = false; ui.menuSub = null;
+  ui.logStick = true;
+  render();
+  send({ type: "run", op, closeDiscord });
+}
+
+function toast(text) {
+  const t = el("div", { class: "toast", text });
+  document.body.append(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+async function startOperation(op) {
+  const v = ui.view;
+  const needsClose = v.discord.running && (op === "install" || op === "uninstall" || op === "inject" || (op === "update" && !v.discord.injected));
+  const lines = [];
+  if (op === "update" && v.updateLabel === "Reinstall") lines.push("Your system already looks up to date. Do you want to reinstall anyway?");
+  if (op === "uninstall") lines.push("This removes Vencord from Discord completely, not only SolRadar. If you want regular Vencord back afterwards, use the official Vencord Installer.");
+  if (op === "repair") lines.push("The Helper's copy of Vencord or SolRadar has unexpected changes. Repair discards those changes and restores the original files.");
+  if (needsClose) lines.push("Discord needs to be closed and will be closed now.");
+  if (op === "update" && v.discord.running && !needsClose) lines.push("Discord will restart when the update is done.");
+  if (op === "inject" && !needsClose) lines.push("SolRadar will be applied to Discord again.");
+  if (lines.length && !(await confirmDialog(lines.join("\n\n")))) return;
+  runOp(op, needsClose);
+}
+
+function handle(e) {
+  switch (e.type) {
+    case "view": ui.view = e.view; ui.busy = e.busy; break;
+    case "steps": ui.op = e.op; ui.steps = e.steps; ui.result = null; ui.starting = false; ui.cancellable = true; break;
+    case "step": {
+      const s = ui.steps.find(x => x.id === e.id);
+      if (s) { s.status = e.status; s.detail = e.detail; }
+      ui.cancellable = e.cancellable;
+      break;
+    }
+    case "output": break; // the same lines arrive as log entries
+    case "operation-end": ui.result = e; ui.op = e.op; ui.starting = false; break;
+    case "log":
+      e.entry._id = ++ui.seq;
+      ui.logs.push(e.entry);
+      if (ui.logs.length > 500) ui.logs.splice(0, ui.logs.length - 500);
+      break;
+    case "dependency-install":
+      ui.deps[e.id] = e;
+      if (e.status === "done") toast("Installed successfully.");
+      break;
+    case "show-activity": ui.logStick = true; break;
+    case "report-ready": toast("Debug report saved. Explorer will show the file."); break;
+    case "fatal": ui.fatal = e.message; break;
+  }
+}
+
+function back() {
+  ui.op = null; ui.result = null; ui.steps = []; ui.starting = false;
+  send({ type: "refresh" });
+  render();
+}
+
+// ---- header model ----------------------------------------------------------------------------
+const VERB = { install: "Installing SolRadar", update: "Updating SolRadar", uninstall: "Removing Vencord", repair: "Repairing", build: "Rebuilding SolRadar", inject: "Re-applying to Discord" };
+const FAILED = { install: "Install failed", update: "Update failed", uninstall: "Uninstall failed", repair: "Repair failed", build: "Rebuild failed", inject: "Re-apply failed" };
+const SUCCESS = {
+  install: "SolRadar installed", update: "SolRadar updated", uninstall: "Vencord removed from Discord",
+  repair: "Repair complete", build: "SolRadar rebuilt", inject: "SolRadar re-applied to Discord",
+};
+
+function isCancelled() { return !!ui.result && !ui.result.ok && ui.result.error && ui.result.error.kind === "cancelled"; }
+
+// What the failed operation offers as its main retry action.
+function retryAction(r) {
+  if (r.error.kind === "discord-running") return { label: "Close Discord and try again", run: async () => { if (await confirmDialog("Close Discord and try again?")) runOp(r.op, true); } };
+  if (r.error.kind === "checkout-modified") return { label: "Repair", run: () => { back(); startOperation("repair"); } };
+  return { label: "Try again", run: () => runOp(r.op, false) };
+}
+
+function opHeader() {
+  const total = ui.steps.length;
+  const r = ui.result;
+  if (!r) {
+    const runningIdx = ui.steps.findIndex(x => x.status === "running");
+    const finished = ui.steps.filter(x => x.status === "done" || x.status === "skipped").length;
+    const n = runningIdx >= 0 ? runningIdx + 1 : Math.min(finished + 1, total);
+    return {
+      tone: "run", title: ui.starting || !total ? "Starting…" : `${VERB[ui.op]} · ${n}/${total}`,
+      action: { label: "Cancel", disabled: !ui.cancellable, tip: ui.cancellable ? "" : "Cancel is not possible while Discord is being patched.", run: () => send({ type: "cancel" }) },
+      running: true,
+    };
+  }
+  if (r.ok) return { tone: "ok", title: SUCCESS[r.op], action: { label: "Done", primary: true, run: back } };
+  if (isCancelled()) return { tone: "muted", title: "Cancelled", action: { label: "Done", primary: true, run: back } };
+  const failedIdx = ui.steps.findIndex(x => x.status === "failed");
+  const retry = retryAction(r);
+  return {
+    tone: "err", title: failedIdx >= 0 ? `${FAILED[r.op]} at ${failedIdx + 1}/${total}` : FAILED[r.op],
+    action: { label: retry.label, primary: true, run: retry.run },
+    back: true,
+  };
+}
+
+function depTitle(d) {
+  return d.state === "outdated" ? `${d.name} is too old` : d.state === "error" ? `${d.name} is not working` : `${d.name} is required`;
+}
+
+function idleHeader() {
+  const v = ui.view;
+  const missing = v.dependencies.filter(d => d.state !== "ok");
+  const a = v.actions;
+  if (v.discord.branches.length === 0) {
+    return { tone: "err", title: "Discord was not found", action: { label: "Download Discord", primary: true, run: () => send({ type: "open-url", url: DISCORD_DOWNLOAD_URL }) } };
+  }
+  if (missing.length) {
+    const d = missing[0];
+    const inst = ui.deps[d.id];
+    const installing = inst && inst.status === "running";
+    return {
+      tone: "warn", title: depTitle(d), dep: d, depFailed: inst && inst.status === "failed" ? inst.message : null,
+      action: d.canAutoInstall
+        ? { label: installing ? `Installing ${d.name}…` : `Install ${d.name}`, primary: true, disabled: installing || ui.busy, run: () => send({ type: "install-dependency", id: d.id }) }
+        : { label: `Download ${d.name}`, primary: true, run: () => send({ type: "open-url", url: d.downloadUrl }) },
+      winget: d.canAutoInstall,
+    };
+  }
+  const tone = v.tone === "error" ? "err" : v.tone === "neutral" ? "muted" : v.tone;
+  if (a.repair) return { tone, title: v.headline, action: { label: "Repair", primary: true, disabled: ui.busy, run: () => startOperation("repair") }, note: v.subline };
+  if (a.install) return { tone, title: v.headline, action: { label: "Install", primary: true, disabled: ui.busy, run: () => startOperation("install") }, note: v.subline };
+  if (a.update) {
+    const hasUpdate = !!v.updateText;
+    return {
+      tone, title: v.headline,
+      action: { label: hasUpdate ? (v.solradar.latest ? `Update to ${v.solradar.latest}` : "Update") : v.updateLabel, primary: hasUpdate, disabled: ui.busy, run: () => startOperation("update") },
+      note: v.subline,
+    };
+  }
+  return { tone, title: v.headline, action: null, note: v.subline };
+}
+
+// ---- strip -----------------------------------------------------------------------------------
+const SEG_ICON = { "Git": "git", "Node.js": "node", "Discord": "discord", "Vencord": "vencord", "SolRadar": "solradar" };
+function seg(cls, name, value, valueCls) {
+  return el("div", { class: `f-seg ${cls}`, title: value ? `${name}: ${value}` : name },
+    el("i"), el("span", { class: "nm" }, icon(SEG_ICON[name], 14), el("b", { text: name })), el("span", { class: valueCls || "", text: value || " " }));
+}
+
+const TONE_SEG = { ok: "ok", warn: "warn", error: "err", neutral: "muted" };
+
+function idleSegments() {
+  const v = ui.view;
+  const segs = [];
+  for (const id of ["git", "node"]) {
+    const d = v.dependencies.find(x => x.id === id);
+    if (!d) continue;
+    if (d.state === "ok") segs.push(seg("ok", d.name, d.version));
+    else if (d.state === "outdated") segs.push(seg("warn", d.name, "too old", "warn"));
+    else if (d.state === "error") segs.push(seg("err", d.name, "not working", "err"));
+    else segs.push(seg("warn", d.name, "missing", "warn"));
+  }
+  if (v.discord.branches.length === 0) segs.push(seg("err", "Discord", "not found", "err"));
+  else {
+    const sel = v.discord.branches.find(b => b.branch === v.discord.selected) || v.discord.branches[0];
+    const short = sel.label.replace(/^Discord\s*/, "") || "Stable";
+    segs.push(seg("ok", "Discord", v.discord.running ? `${short} · running` : short));
+  }
+  for (const [name, x] of [["Vencord", v.vencord], ["SolRadar", v.solradar]]) {
+    const cls = TONE_SEG[x.tone] === "neutral" ? "muted" : TONE_SEG[x.tone];
+    segs.push(seg(cls, name, x.short, cls === "warn" || cls === "err" ? cls : ""));
+  }
+  return segs;
+}
+
+function phasesFor(op, steps) {
+  // Map step IDs to phase names
+  const stepToPhase = {
+    requirements: "Prepare", discord: "Prepare",
+    vencord: "Download", solradar: "Download",
+    packages: "Build", build: "Build",
+    inject: "Patch", verify: "Patch",
+    uninject: "Remove",
+    launch: "Start",
+    repair: "Repair",
+  };
+
+  // Override verify for uninstall to be Remove
+  const phaseOverrides = {
+    uninstall: { verify: "Remove" }
+  };
+
+  // Phase order
+  const phaseOrder = ["Prepare", "Download", "Build", "Patch", "Remove", "Start", "Repair"];
+
+  // Collect phases and their steps
+  const phaseMap = {};
+  for (const step of steps) {
+    let phase = stepToPhase[step.id];
+    if (phaseOverrides[op] && phaseOverrides[op][step.id]) {
+      phase = phaseOverrides[op][step.id];
+    }
+    if (!phase) continue;
+    if (!phaseMap[phase]) phaseMap[phase] = [];
+    phaseMap[phase].push(step);
+  }
+
+  // Build phases in order, only including those that have steps
+  const phases = [];
+  for (const phaseName of phaseOrder) {
+    if (!phaseMap[phaseName]) continue;
+    const phaseSteps = phaseMap[phaseName];
+
+    // Determine phase status
+    let status = "pending";
+    const hasFailure = phaseSteps.some(s => s.status === "failed");
+    const hasRunning = phaseSteps.some(s => s.status === "running");
+    const allSkipped = phaseSteps.every(s => s.status === "skipped");
+    const hasDone = phaseSteps.some(s => s.status === "done");
+    const allDoneOrSkipped = phaseSteps.every(s => s.status === "done" || s.status === "skipped");
+
+    if (hasFailure) status = "failed";
+    else if (hasRunning) status = "running";
+    else if (allSkipped) status = "skipped";
+    else if (allDoneOrSkipped && hasDone) status = "done";
+    else status = "pending";
+
+    // Determine value text
+    const value = status === "running" ? "in progress" : status === "failed" ? "failed" : status === "skipped" ? "skipped" : "";
+
+    phases.push({
+      name: phaseName,
+      status: status,
+      value: value,
+    });
+  }
+
+  return phases;
+}
+
+function opSegments() {
+  const cancelled = isCancelled();
+  const phases = phasesFor(ui.op, ui.steps);
+  return phases.map(p => {
+    const status = cancelled && p.status === "running" ? "pending" : p.status;
+    const cls = { done: "ok", running: "run", failed: "err", skipped: "skip", pending: "" }[status];
+    return seg(cls, p.name, p.value, status === "failed" ? "err" : "");
+  });
+}
+
+function stripEl() {
+  const segs = ui.op ? opSegments() : ui.view ? idleSegments() : [];
+  if (!segs.length) return null;
+  const strip = el("div", { class: "strip" }, segs);
+  strip.style.gridTemplateColumns = `repeat(${segs.length}, minmax(0, 1fr))`;
+  return strip;
+}
+
+// ---- activity --------------------------------------------------------------------------------
+// Step entries become primary lines; commands and their output fold under the latest primary line.
+function buildItems() {
+  const items = [];
+  for (const l of ui.logs) {
+    if (!ui.showBackground && l.background) continue;
+    const base = { id: l._id, ts: l.ts, lines: [] };
+    if (l.kind === "step") {
+      const m = /^(▶|✓|✗|–)\s+(.*)$/.exec(l.text);
+      if (!m) { items.push({ ...base, type: "step", state: "info", label: l.text, text: l.text }); continue; }
+      const mark = m[1];
+      if (mark === "▶") { items.push({ ...base, type: "step", state: "run", label: m[2], text: m[2] }); continue; }
+      const skip = mark === "–" ? /^(.*?) \(skipped: (.*)\)$/.exec(m[2]) : null;
+      const label = skip ? skip[1] : m[2];
+      let g = null;
+      for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "step" && items[i].state === "run" && items[i].label === label) { g = items[i]; break; }
+      if (!g) { g = { ...base, type: "step", label }; items.push(g); }
+      g.state = mark === "✓" ? "done" : mark === "✗" ? "failed" : "skipped";
+      g.text = mark === "–" ? `${label} (skipped${skip ? `: ${skip[2]}` : ""})` : label;
+      continue;
+    }
+    const last = items[items.length - 1];
+    if (l.kind === "cmd") { if (last) last.lines.push({ cls: "c", text: "$ " + l.text }); continue; }
+    if (l.kind === "out") { if (last) last.lines.push({ cls: "", text: "│ " + l.text }); continue; }
+    if (/^exit -?\d+/.test(l.text) && l.level !== "error") { if (last) last.lines.push({ cls: "", text: "└ " + l.text }); continue; }
+    if (l.level === "debug") { if (last) last.lines.push({ cls: "", text: l.text }); continue; }
+    items.push({ ...base, type: "msg", level: l.level, text: l.text });
+  }
+  return items;
+}
+
+function reportLink() {
+  return el("button", { class: "link", onclick: () => send({ type: "debug-report", redact: ui.redact }), text: "Send debug report" });
+}
+
+function friendlyList() {
+  const items = buildItems();
+  const opRunning = !!ui.op && !ui.result;
+  let lastStep = -1;
+  items.forEach((it, i) => { if (it.type === "step") lastStep = i; });
+  const failedResult = ui.result && !ui.result.ok && !isCancelled() ? ui.result : null;
+  let lastError = -1;
+  items.forEach((it, i) => { if (it.type === "msg" && it.level === "error") lastError = i; });
+
+  const nodes = [];
+  items.forEach((it, i) => {
+    let icon = "›", iconCls = "muted", textCls = "", bold = false;
+    if (it.type === "step") {
+      const active = it.state === "run" && opRunning && i === lastStep;
+      if (it.state === "run" && !active) { icon = "–"; iconCls = "muted"; }
+      else if (active) { icon = "›"; iconCls = "accent"; bold = true; }
+      else if (it.state === "done") { icon = "✓"; iconCls = "ok"; }
+      else if (it.state === "failed") { icon = "✕"; iconCls = "err"; textCls = "err"; bold = true; }
+      else if (it.state === "skipped") { icon = "–"; iconCls = "muted"; textCls = "muted"; }
+      it.active = active;
+    } else if (it.level === "warn") { icon = "!"; iconCls = "warn"; }
+    else if (it.level === "error") { icon = "✕"; iconCls = "err"; textCls = "err"; bold = true; }
+
+    const text = it.type === "msg" ? it.text.split("\n")[0] : it.text;
+    const expanded = it.lines.length > 0 && (ui.showCommands || (ui.groupOpen[it.id] ?? (it.active || it.state === "failed")));
+    const toggle = () => { ui.groupOpen[it.id] = !expanded; render(); };
+    nodes.push(el("div", { class: "fl-g" },
+      el("div", { class: "fl-h" },
+        el("span", { class: "t", text: it.ts }),
+        el("span", { class: `ic ${iconCls === "accent" ? "" : iconCls}`, style: iconCls === "accent" ? "color:var(--accent)" : null, text: icon }),
+        el("span", { class: `x ${textCls} ${bold ? "bold" : ""}`, title: text, text }),
+        it.lines.length ? el("button", { class: "n", "aria-expanded": String(expanded), onclick: toggle, text: `${it.lines.length} lines ${expanded ? "▾" : "▸"}` }) : null),
+      expanded ? el("div", { class: "fl-cmd" }, it.lines.map(x => el("p", { class: x.cls, text: x.text }))) : null));
+    if (it.type === "msg" && it.level === "error" && i === lastError && !failedResult) {
+      const rest = it.text.split("\n").slice(1).join("\n").trim();
+      nodes.push(el("div", { class: "errbox fl-err" },
+        el("b", { text: rest || "Something went wrong." }), " ", rest ? "" : "The debug report helps to find the cause. ", reportLink()));
+    }
+  });
+  if (failedResult) {
+    const retry = retryAction(failedResult);
+    nodes.push(el("div", { class: "errbox" },
+      el("b", { text: failedResult.error.message }), " ",
+      el("button", { class: "link", onclick: retry.run, text: retry.label }), " · ", reportLink()));
+  }
+  return nodes.length ? nodes : [el("div", { class: "empty", text: "Nothing to show yet." })];
+}
+
+// One persistent scroll box so the scroll position survives the full re-render on every event.
+const logBox = el("div", { class: "fl", onscroll: () => {
+  ui.logStick = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 8;
+  ui.logTop = logBox.scrollTop;
+} });
+
+function sw(label, on, fn) {
+  return el("button", { class: `sw${on ? " on" : ""}`, role: "switch", "aria-checked": String(on), onclick: fn }, el("i"), label);
+}
+
+function activitySection() {
+  logBox.replaceChildren(...friendlyList());
+  return [
+    el("div", { class: "tools" }, el("span", { text: "Activity" }),
+      el("div", { class: "sws" },
+        sw("Show commands", ui.showCommands, () => { ui.showCommands = !ui.showCommands; render(); }),
+        sw("Show background checks", ui.showBackground, () => { ui.showBackground = !ui.showBackground; render(); }))),
+    logBox,
+  ];
+}
+
+function syncLogScroll() {
+  if (!logBox.isConnected) return;
+  logBox.scrollTop = ui.logStick ? logBox.scrollHeight : ui.logTop;
+}
+
+// ---- menu ------------------------------------------------------------------------------------
+const SIMS = [
+  ["solradar-update", "SolRadar update available"], ["vencord-update", "Vencord update available"],
+  ["helper-update", "New Helper version available"], ["update-failed", "Update check failed"],
+  ["git-missing", "Git missing"], ["node-missing", "Node.js missing"], ["node-old", "Node.js too old"],
+  ["discord-missing", "Discord not found"], ["discord-running", "Discord running"],
+];
+
+function closeMenu() { ui.menu = false; ui.menuSub = null; }
+
+// Menu item. `keep` leaves the menu open after the click (toggles).
+function mi(id, label, o) {
+  o = o || {};
+  return el("button", {
+    class: `mi${o.danger ? " danger" : ""}`, role: o.check !== undefined ? "menuitemcheckbox" : "menuitem", "data-id": id,
+    disabled: o.disabled, title: o.desc, "aria-checked": o.check !== undefined ? String(!!o.check) : null,
+    onclick: () => { if (!o.keep) closeMenu(); o.run(); render(); },
+  }, el("span", { class: "mt" }, label, o.desc ? el("small", { text: o.desc }) : null),
+     o.check !== undefined ? el("span", { class: `r${o.check ? " on" : ""}`, text: o.check ? "✓" : "" }) : null);
+}
+
+function submenu(key, label, items) {
+  const open = ui.menuSub === key;
+  return el("div", { class: `has-sub${open ? " open" : ""}` },
+    el("button", { class: "mi", role: "menuitem", "aria-haspopup": "menu", "aria-expanded": String(open), "data-id": key,
+      onclick: () => { ui.menuSub = open ? null : key; render(); } }, el("span", { class: "mt", text: label }), el("span", { class: "r", text: "›" })),
+    el("div", { class: "menu sub", role: "menu" }, items));
+}
+
+function menuEl() {
+  const v = ui.view;
+  const adv = v ? v.advanced : { build: false, inject: false };
+  const busy = ui.busy || (!!ui.op && !ui.result);
+  const sims = v ? v.simulations : [];
+  const items = [
+    mi("check", "Check again", { disabled: busy, run: () => send({ type: "refresh" }) }),
+    mi("logs", "Open logs", { run: () => send({ type: "open-logs" }) }),
+    mi("report", "Generate debug report", { run: () => send({ type: "debug-report", redact: ui.redact }) }),
+    mi("redact", "Hide personal info", { check: ui.redact, keep: true, run: () => { ui.redact = !ui.redact; } }),
+    el("hr"),
+    submenu("tools", "Troubleshooting tools", [
+      mi("tools:build", "Rebuild SolRadar", { desc: "Rebuilds using the files already downloaded. Your Discord keeps working if it fails.", disabled: busy || !adv.build, run: () => startOperation("build") }),
+      mi("tools:inject", "Re-apply to Discord", { desc: "Applies SolRadar to Discord again, for example after a Discord update.", disabled: busy || !adv.inject, run: () => startOperation("inject") }),
+      mi("tools:versions", "Show versions", { desc: "Lists the installed and latest versions in the activity log.", disabled: busy, run: () => send({ type: "show-versions" }) }),
+      mi("tools:root", "Open installation folder", { desc: "Opens the folder where SolRadar Helper keeps its files.", run: () => send({ type: "open-root" }) }),
+    ]),
+    submenu("sims", "Test scenarios", [
+      el("div", { class: "note", text: "These only change what this window shows. Nothing on your computer is changed. Restarting the Helper clears them." }),
+      ...SIMS.map(([id, label]) => { const on = sims.includes(id);
+        return mi(`sims:${id}`, label, { check: on, keep: true, run: () => send({ type: "simulate", id, on: !on }) }); }),
+      el("hr"),
+      mi("sims:clear", "Clear all", { disabled: !sims.length, keep: true, run: () => send({ type: "simulate-clear" }) }),
+      mi("sims:error", "Show an error in the activity", { run: () => send({ type: "simulate-error" }) }),
+    ]),
+    el("hr"),
+  ];
+  if (v && v.discord.branches.length > 1) {
+    const sel = v.discord.branches.find(b => b.branch === v.discord.selected) || v.discord.branches[0];
+    items.push(submenu("branch", `Discord: ${sel.label}`, v.discord.branches.map(b =>
+      mi(`branch:${b.branch}`, b.label, { check: b.branch === v.discord.selected, disabled: busy, run: () => send({ type: "select-branch", branch: b.branch }) }))));
+  }
+  items.push(
+    mi("help", "Help", { run: () => send({ type: "open-url", url: HELP_URL }) }),
+    mi("uninstall", "Uninstall…", { danger: true, disabled: busy || !(v && v.actions.uninstall), run: () => startOperation("uninstall") }));
+  return el("div", { class: "menu", role: "menu" }, items);
+}
+
+document.addEventListener("click", ev => {
+  if (!ui.menu) return;
+  const t = ev.target;
+  if (t instanceof Element && t.closest(".menu, .menubtn")) return;
+  closeMenu(); render();
+});
+document.addEventListener("keydown", ev => {
+  if (!ui.menu) return;
+  const active = document.activeElement;
+  const menu = active && active.closest ? active.closest(".menu") : null;
+  if (ev.key === "Escape") {
+    ev.preventDefault();
+    if (ui.menuSub) { ui.focusId = ui.menuSub; ui.menuSub = null; }
+    else { closeMenu(); ui.focusId = "menubtn"; }
+    render();
+  } else if ((ev.key === "ArrowDown" || ev.key === "ArrowUp") && menu) {
+    ev.preventDefault();
+    const list = [...menu.querySelectorAll(":scope > .mi:not(:disabled), :scope > .has-sub > .mi:not(:disabled)")];
+    const i = list.indexOf(active);
+    const next = list[(i + (ev.key === "ArrowDown" ? 1 : -1) + list.length) % list.length];
+    if (next) next.focus();
+  } else if (ev.key === "ArrowRight" && active && active.parentElement && active.parentElement.classList.contains("has-sub")) {
+    ev.preventDefault();
+    ui.menuSub = active.dataset.id;
+    ui.focusId = "first-sub";
+    render();
+  } else if (ev.key === "ArrowLeft" && menu && menu.classList.contains("sub")) {
+    ev.preventDefault();
+    ui.focusId = ui.menuSub; ui.menuSub = null;
+    render();
+  }
+});
+
+function applyFocus() {
+  const id = ui.focusId;
+  ui.focusId = null;
+  if (!id) return;
+  let node = null;
+  if (id === "first-sub") node = document.querySelector(".has-sub.open > .sub .mi:not(:disabled)");
+  else node = [...document.querySelectorAll("[data-id]")].find(n => n.dataset.id === id);
+  if (node) node.focus();
+}
+
+// ---- screen ----------------------------------------------------------------------------------
+function selfSteps(d) {
+  return el("div", { class: "selfsteps small muted" },
+    el("div", { class: "row" }, icon(SEG_ICON[d.name], 14), el("span", {}, "Prefer to install it yourself? "),
+      el("button", { class: "link", onclick: () => { ui.showManual = !ui.showManual; render(); }, text: ui.showManual ? "Hide steps" : "Show steps" })),
+    ui.showManual ? el("ol", {}, d.manualSteps.map(s => el("li", { text: s }))) : null,
+    ui.showManual ? el("div", { class: "acts" },
+      el("button", { onclick: () => send({ type: "open-url", url: d.downloadUrl }), text: "Open download page" }),
+      el("button", { disabled: ui.busy, onclick: () => send({ type: "refresh" }), text: "Check again" })) : null);
+}
+
+function headerEl(h) {
+  const btn = a => a ? el("button", { class: a.primary ? "primary" : "", disabled: a.disabled, title: a.tip, onclick: a.run, text: a.label }) : null;
+  return el("div", { class: "headwrap" },
+    el("div", { class: "row" },
+      el("span", { class: `dot ${h.tone === "run" ? "run" : h.tone === "muted" ? "muted" : h.tone}` }),
+      icon("solradar", 16),
+      el("b", { class: `title grow ${h.tone === "err" ? "err" : ""}`, text: h.title }),
+      ui.view && ui.view.simulations.length ? el("span", { class: "badge", text: "Test scenario active" }) : null,
+      btn(h.action),
+      h.back ? el("button", { class: "ghost", onclick: back, text: "Back" }) : null,
+      el("button", { class: "ghost menubtn", "data-id": "menubtn", "aria-label": "More", "aria-haspopup": "menu", "aria-expanded": String(ui.menu),
+        onclick: ev => { ui.menu = !ui.menu; ui.menuSub = null; if (ui.menu && ev.detail === 0) ui.focusId = "check"; render(); }, text: "⋯" })),
+    ui.menu ? menuEl() : null);
+}
+
+function render() {
+  const app = document.getElementById("app");
+  const parts = [];
+  if (ui.fatal) parts.push(el("div", { class: "fatal" }, el("span", { class: "grow", text: ui.fatal }),
+    el("button", { onclick: () => { ui.fatal = null; send({ type: "open-logs" }); render(); }, text: "Open logs" })));
+  const v = ui.view;
+  if (!v && !ui.op) {
+    parts.push(headerEl({ tone: "run", title: "Checking your computer…", action: null }), el("div", { class: "bar" }));
+  } else {
+    if (v && v.helperUpdate && !ui.op) parts.push(el("div", { class: "notice" },
+      el("span", { class: "grow", text: `A new version of SolRadar Helper is available (${v.helperUpdate.latest}).` }),
+      el("button", { class: "link", onclick: () => send({ type: "open-url", url: v.helperUpdate.url }), text: "Open project page" })));
+    const h = ui.op ? opHeader() : idleHeader();
+    parts.push(headerEl(h));
+    if (h.running) parts.push(el("div", { class: "bar" }));
+    const strip = stripEl();
+    if (strip) parts.push(strip);
+    if (h.depFailed) parts.push(el("div", { class: "small err", text: h.depFailed }));
+    if (h.winget) parts.push(el("div", { class: "small muted", text: "Windows may ask for permission to make changes. That request is for this installation, so click Yes." }));
+    if (h.note) parts.push(el("div", { class: "small muted", text: h.note }));
+    if (h.dep) parts.push(selfSteps(h.dep));
+    if (ui.op && ui.result && ui.result.ok && ui.result.op === "uninstall") parts.push(el("div", { class: "row small muted" },
+      el("span", { text: "Want regular Vencord back? Use the official Vencord Installer." }),
+      el("button", { class: "link", onclick: () => send({ type: "open-url", url: VENCORD_INSTALLER_URL }), text: "Open Vencord Installer page" })));
+  }
+  parts.push(...activitySection());
+  parts.push(el("footer", { text: "Unofficial tool. Not affiliated with Vencord or Discord." }));
+  app.replaceChildren(...parts);
+  syncLogScroll();
+  applyFocus();
+}
+
+async function poll() {
+  try {
+    const events = await window.__poll();
+    if (events.length) { for (const e of events) handle(e); render(); }
+  } finally {
+    setTimeout(poll, 100);
+  }
+}
+
+render();
+poll();
+</script>
+</body>
+</html>

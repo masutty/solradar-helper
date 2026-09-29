@@ -1,0 +1,8 @@
+docs/
+dist/
+node_modules
+
+CLAUDE.md
+CONTEXT.md
+.claude
+.superpowers

@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Skip the bump commits made by this workflow.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Pushes (version bump commit, tag) use a write deploy key. Only this key is on the
+          # bypass list of the "pr-only" ruleset; people and GITHUB_TOKEN still need a PR.
+          ssh-key: ${{ secrets.SORAHELPER_DEPLOY_KEY }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Test
+        run: bun test
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Compute version
+        id: bump
+        run: bun run scripts/bump-version.ts
+
+      - name: Build
+        if: steps.bump.outputs.release == 'true'
+        run: bun run build
+
+      - name: Commit version and tag
+        if: steps.bump.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- version.json package.json; then
+            git add version.json package.json
+            git commit -m "chore(release): v${VERSION} [skip ci]" \
+              -m "- Bump version for the release." \
+              -m "(generated with claude)"
+            git push origin HEAD:main
+          fi
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Create checksum
+        if: steps.bump.outputs.release == 'true'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash dist/SolRadarHelper.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  SolRadarHelper.exe" | Out-File -Encoding ascii dist/SolRadarHelper.exe.sha256
+
+      - name: Publish release
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" dist/SolRadarHelper.exe dist/SolRadarHelper.exe.sha256 \
+            --title "SolRadar Helper v${VERSION}" \
+            --generate-notes

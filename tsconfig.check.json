@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": { "webview-bun": ["./src/shims/webview-bun.d.ts"] }
+  },
+  "exclude": ["node_modules"]
+}
