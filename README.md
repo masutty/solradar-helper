@@ -25,6 +25,8 @@ This is **not** an official Vencord installer, and it is not affiliated with the
 
 The app is published in the **Releases** section of this repository, in the sidebar on the right of the repository page. Open the latest release, get `SolRadarHelper.exe` there and run it. The Helper clones, builds and injects everything for you.
 
+<p align="center"><img src="assets/where_is_releases.png" alt="The Releases section is in the right sidebar of the repository page, below About" width="720"></p>
+
 If you prefer, you can build it yourself from this source code. See [Build it yourself](#build-it-yourself).
 
 > [!NOTE]
