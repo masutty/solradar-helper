@@ -35,13 +35,16 @@ worker.postMessage({ type: "init", buffer: queue.buffer } satisfies WorkerMessag
 
 let webview: Webview;
 try {
-    webview = new Webview(false, { width: 780, height: 700, hint: SizeHint.NONE });
+    webview = new Webview(false, { width: 860, height: 780, hint: SizeHint.NONE });
 } catch (e) {
     showMessageBox(HELPER_NAME, `The window could not be created.\n\n${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);
 }
 
 webview.title = HELPER_NAME;
+// Minimum size first, then the initial (still resizable) size.
+webview.size = { width: 720, height: 620, hint: SizeHint.MIN };
+webview.size = { width: 860, height: 780, hint: SizeHint.NONE };
 // webview-bun JSON.stringifies every binding result; returning undefined makes the page throw on each call.
 webview.bind("__send", (command: UiCommand) => {
     worker.postMessage({ type: "command", command } satisfies WorkerMessage);
