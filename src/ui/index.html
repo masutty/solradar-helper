@@ -723,7 +723,7 @@ function render() {
   } else {
     if (v && v.helperUpdate && !ui.op) parts.push(el("div", { class: "notice" },
       el("span", { class: "grow", text: `A new version of SolRadar Helper is available (${v.helperUpdate.latest}).` }),
-      el("button", { class: "link", onclick: () => send({ type: "open-url", url: v.helperUpdate.url }), text: "Download" })));
+      el("button", { class: "link", onclick: () => send({ type: "open-url", url: v.helperUpdate.url }), text: "Open project page" })));
     const h = ui.op ? opHeader() : idleHeader();
     parts.push(headerEl(h));
     if (h.running) parts.push(el("div", { class: "bar" }));

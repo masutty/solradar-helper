@@ -62,7 +62,7 @@ test("update available shows versions; failed check still allows Update", () => 
     const v = deriveView(snap(installed()), u);
     expect(v.headline).toBe("An update is available");
     expect(v.updateText).toBe("SolRadar 1.3.6 → 1.4.0");
-    expect(v.helperUpdate).toEqual({ latest: "0.2.0", url: "https://github.com/masutty/solradar-helper/releases" });
+    expect(v.helperUpdate).toEqual({ latest: "0.2.0", url: "https://github.com/masutty/solradar-helper" });
 
     const failed = deriveView(snap(installed()), { ...u, solradar: { localCommit: "p1" }, vencord: { local: "x" }, helper: { current: "0.1.0" }, failed: true });
     expect(failed.subline).toBe("Couldn't check for updates.");

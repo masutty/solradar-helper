@@ -4,7 +4,7 @@ import { takeSnapshot, type Snapshot } from "../app/snapshot";
 import { deriveView } from "../app/view";
 import { createCommandRunner } from "../core/commands";
 import {
-    DISCORD_DOWNLOAD_URL, HELPER_HELP_URL, HELPER_RELEASES_URL, HELPER_VERSION, VENCORD_INSTALLER_URL, WEBVIEW2_URL,
+    DISCORD_DOWNLOAD_URL, HELPER_HELP_URL, HELPER_REPO_URL, HELPER_VERSION, VENCORD_INSTALLER_URL, WEBVIEW2_URL,
 } from "../core/constants";
 import { buildToolEnv, type ToolEnv } from "../core/env";
 import { toHelperError } from "../core/errors";
@@ -46,7 +46,7 @@ const installingDeps = new Set<DependencyId>();
 
 const ALLOWED_URLS = new Set([
     ...Object.values(DEPENDENCIES).map(d => d.downloadUrl),
-    VENCORD_INSTALLER_URL, DISCORD_DOWNLOAD_URL, HELPER_RELEASES_URL, HELPER_HELP_URL, WEBVIEW2_URL,
+    VENCORD_INSTALLER_URL, DISCORD_DOWNLOAD_URL, HELPER_REPO_URL, HELPER_HELP_URL, WEBVIEW2_URL,
 ]);
 
 const emit = (e: BackendEvent) => queue?.push(e);

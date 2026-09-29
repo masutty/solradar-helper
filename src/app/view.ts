@@ -1,4 +1,4 @@
-import { HELPER_RELEASES_URL } from "../core/constants";
+import { HELPER_REPO_URL } from "../core/constants";
 import { DEPENDENCIES, type DependencyId, type DependencyState } from "../services/dependencies";
 import type { DiscordBranch } from "../services/discord";
 import { isNewerVersion, updateAvailable, type UpdateInfo } from "../services/updates";
@@ -137,7 +137,7 @@ export function deriveView(s: Snapshot, u: UpdateInfo | null, simulations: Simul
         },
         updateText,
         updateLabel: installed && u && !u.failed && !hasUpdate ? "Reinstall" : "Update",
-        helperUpdate: helperLatest && u && isNewerVersion(helperLatest, u.helper.current) ? { latest: helperLatest, url: HELPER_RELEASES_URL } : undefined,
+        helperUpdate: helperLatest && u && isNewerVersion(helperLatest, u.helper.current) ? { latest: helperLatest, url: HELPER_REPO_URL } : undefined,
         actions: {
             install: hasDiscord && depsOk && !installed && !modified,
             update: hasDiscord && depsOk && installed && !modified,

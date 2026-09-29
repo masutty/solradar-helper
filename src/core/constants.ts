@@ -8,7 +8,7 @@ export const SOLRADAR_REPO = "https://gitlab.com/masutty/solradar.git";
 export const SOLRADAR_VERSION_URL = "https://gitlab.com/api/v4/projects/80066436/repository/files/version.json/raw?ref=main";
 
 export const HELPER_LATEST_RELEASE_API = "https://api.github.com/repos/masutty/solradar-helper/releases/latest";
-export const HELPER_RELEASES_URL = "https://github.com/masutty/solradar-helper/releases";
+export const HELPER_REPO_URL = "https://github.com/masutty/solradar-helper";
 export const HELPER_HELP_URL = "https://github.com/masutty/solradar-helper#readme";
 
 export const VENCORD_INSTALLER_URL = "https://vencord.dev/download/";
