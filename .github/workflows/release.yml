@@ -24,6 +24,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Pushes (version bump commit, tag) authenticate as the repository admin,
+          # who is on the bypass list of the "pr-only" ruleset. GITHUB_TOKEN can't bypass it.
+          token: ${{ secrets.SORAHELPER_RELEASE_TOKEN }}
 
       - uses: oven-sh/setup-bun@v2
         with:
