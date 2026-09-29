@@ -108,6 +108,10 @@ bun run build   # outputs dist/SolRadarHelper.exe
 
 Other scripts: `bun run dev` (run from source), `bun test`, `bun run typecheck`.
 
+### Releases & versioning
+
+Merging to `main` publishes a release automatically. The version follows Conventional Commits: `feat` bumps minor, `fix` and other types bump patch, and a breaking change bumps major (before 1.0, a breaking change bumps minor). `version.json` is the single source of the version. Each release includes a SHA-256 checksum file.
+
 ## Credits
 
 - [Vencord](https://github.com/Vendicated/Vencord): the project this builds on.
