@@ -35,8 +35,11 @@ export interface ViewModel {
     vencord: { label: string; tone: Tone };
     solradar: { label: string; tone: Tone };
     updateText?: string;
+    /** "Reinstall" when installed and the update check succeeded with nothing new; otherwise "Update". */
+    updateLabel: "Update" | "Reinstall";
     helperUpdate?: { latest: string; url: string };
     actions: { install: boolean; update: boolean; uninstall: boolean; repair: boolean };
+    advanced: { build: boolean; inject: boolean };
 }
 
 export function deriveView(s: Snapshot, u: UpdateInfo | null): ViewModel {
@@ -115,12 +118,17 @@ export function deriveView(s: Snapshot, u: UpdateInfo | null): ViewModel {
             tone: solradar.state === "ready" ? "ok" : solradar.state === "modified" ? "warn" : "neutral",
         },
         updateText,
+        updateLabel: installed && u && !u.failed && !hasUpdate ? "Reinstall" : "Update",
         helperUpdate: helperLatest && u && isNewerVersion(helperLatest, u.helper.current) ? { latest: helperLatest, url: HELPER_RELEASES_URL } : undefined,
         actions: {
             install: hasDiscord && depsOk && !installed && !modified,
             update: hasDiscord && depsOk && installed && !modified,
             uninstall: hasDiscord && ours,
             repair: modified,
+        },
+        advanced: {
+            build: depsOk && (vencord.state === "ready" || vencord.state === "modified") && (solradar.state === "ready" || solradar.state === "modified"),
+            inject: hasDiscord && vencord.built,
         },
     };
 }

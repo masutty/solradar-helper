@@ -14,7 +14,7 @@ import {
     backupDist, buildVencord, inject, installPackages, isBuilt, readVencordPackage, restoreDist, uninject,
 } from "../services/vencord";
 
-export type OperationKind = "install" | "update" | "uninstall" | "repair";
+export type OperationKind = "install" | "update" | "uninstall" | "repair" | "build" | "inject";
 export type StepId =
     | "requirements" | "discord" | "vencord" | "solradar" | "packages" | "build"
     | "inject" | "uninject" | "verify" | "launch" | "repair";
@@ -64,6 +64,8 @@ const PLAN: Record<OperationKind, StepId[]> = {
     update: ["requirements", "discord", "vencord", "solradar", "packages", "build", "inject", "verify", "launch"],
     uninstall: ["discord", "uninject", "verify", "launch"],
     repair: ["repair"],
+    build: ["requirements", "packages", "build"],
+    inject: ["discord", "inject", "verify", "launch"],
 };
 
 const NOT_CANCELLABLE = new Set<StepId>(["inject", "uninject"]);
@@ -138,7 +140,7 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
         return;
     }
 
-    if (kind !== "uninstall") {
+    if (kind !== "uninstall" && kind !== "inject") {
         await step("requirements", async () => {
             const min = minNodeMajor(readVencordPackage(paths.checkout)?.engines?.node);
             const results = await Promise.all((["git", "node"] as const).map(id => checkDependency(id, deps.runner, deps.env, min)));
@@ -147,11 +149,34 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
         });
     }
 
+    if (kind === "build") {
+        // Rebuild only: no repo sync and no patching, and Discord may stay open.
+        let hadBackup = false;
+        try {
+            await step("packages", async () => {
+                ensureOk(await installPackages(ctx, paths), "network", "Vencord's packages could not be downloaded. Check your internet connection and try again.");
+            });
+            await step("build", async () => {
+                hadBackup = backupDist(paths);
+                const r = await buildVencord(ctx, paths);
+                if (r.exitCode === 0 && !r.cancelled && !r.timedOut && isBuilt(paths)) return;
+                throw commandError("build", hadBackup
+                    ? "Vencord could not be built. Your previous version was kept. Open the detailed log for more information."
+                    : "Vencord could not be built. Open the detailed log for more information.", r);
+            });
+        } catch (e) {
+            if (hadBackup) restoreDist(paths);
+            throw e;
+        }
+        return;
+    }
+
     const { install, wasRunning, needsInject } = await step("discord", async () => {
         const install = pickInstall(findDiscordInstalls(deps.localAppData), deps.branch);
         if (!install) throw new HelperError("discord-not-found", "Discord was not found. Install Discord first, then try again.");
         const injection = readInjection(install, paths.checkout);
-        const needsInject = kind === "uninstall" || injection !== "injected";
+        if (kind === "inject" && !isBuilt(paths)) throw new HelperError("inject", "SolRadar has not been built yet. Use Install first.");
+        const needsInject = kind === "uninstall" || kind === "inject" || injection !== "injected";
         const wasRunning = await isDiscordRunning(install, deps.runner, deps.env);
         if (wasRunning && needsInject) {
             if (!deps.closeDiscordFirst) throw new HelperError("discord-running", "Please close Discord before continuing.");
@@ -194,31 +219,33 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
         });
     };
 
-    let hadBackup = false;
-    try {
-        await syncRepo("vencord", paths.checkout, VENCORD_REPO, "package.json", "Vencord");
-        mkdirSync(paths.userplugins, { recursive: true });
-        await syncRepo("solradar", paths.plugin, SOLRADAR_REPO, "index.tsx", "SolRadar");
+    if (kind !== "inject") {
+        let hadBackup = false;
+        try {
+            await syncRepo("vencord", paths.checkout, VENCORD_REPO, "package.json", "Vencord");
+            mkdirSync(paths.userplugins, { recursive: true });
+            await syncRepo("solradar", paths.plugin, SOLRADAR_REPO, "index.tsx", "SolRadar");
 
-        await step("packages", async () => {
-            ensureOk(await installPackages(ctx, paths), "network", "Vencord's packages could not be downloaded. Check your internet connection and try again.");
-        });
+            await step("packages", async () => {
+                ensureOk(await installPackages(ctx, paths), "network", "Vencord's packages could not be downloaded. Check your internet connection and try again.");
+            });
 
-        await step("build", async () => {
-            hadBackup = backupDist(paths);
-            const r = await buildVencord(ctx, paths);
-            if (r.exitCode === 0 && !r.cancelled && !r.timedOut && isBuilt(paths)) return;
-            throw commandError("build", hadBackup
-                ? "Vencord could not be built. Your previous version was kept. Open the detailed log for more information."
-                : "Vencord could not be built. Open the detailed log for more information.", r);
-        });
-    } catch (e) {
-        // Any failure or cancel before a successful build: keep Discord on the last working build.
-        const rollbackCtx = { ...ctx, signal: undefined };
-        if (hadBackup) restoreDist(paths);
-        if (previous.vencord) await resetTo(rollbackCtx, paths.checkout, previous.vencord);
-        if (previous.plugin) await resetTo(rollbackCtx, paths.plugin, previous.plugin);
-        throw e;
+            await step("build", async () => {
+                hadBackup = backupDist(paths);
+                const r = await buildVencord(ctx, paths);
+                if (r.exitCode === 0 && !r.cancelled && !r.timedOut && isBuilt(paths)) return;
+                throw commandError("build", hadBackup
+                    ? "Vencord could not be built. Your previous version was kept. Open the detailed log for more information."
+                    : "Vencord could not be built. Open the detailed log for more information.", r);
+            });
+        } catch (e) {
+            // Any failure or cancel before a successful build: keep Discord on the last working build.
+            const rollbackCtx = { ...ctx, signal: undefined };
+            if (hadBackup) restoreDist(paths);
+            if (previous.vencord) await resetTo(rollbackCtx, paths.checkout, previous.vencord);
+            if (previous.plugin) await resetTo(rollbackCtx, paths.plugin, previous.plugin);
+            throw e;
+        }
     }
 
     await step("inject", async () => {

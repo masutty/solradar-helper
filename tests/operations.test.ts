@@ -121,3 +121,42 @@ test("failed install does not launch Discord it did not close", async () => {
     expect(await kindOf(runOperation("install", w.deps()))).toBe("build");
     expect(w.launched).toEqual([]);
 });
+
+const injectCalls = (w: ReturnType<typeof makeWorld>) => w.calls.filter(c => c.args[3] === "inject");
+
+test("build runs requirements, packages and build only", async () => {
+    const w = makeWorld({ alreadyInstalled: true, discordRunning: true });
+    await runOperation("build", w.deps());
+    const ids = w.events.filter(e => e.type === "step" && e.status === "done").map(e => (e as any).id);
+    expect(ids).toEqual(["requirements", "packages", "build"]);
+    expect(readFileSync(join(w.paths.checkout, "dist", "patcher.js"), "utf8")).toBe("new build");
+    expect(injectCalls(w)).toHaveLength(0);
+    expect(w.calls.some(c => c.args[0] === "fetch" || c.args[0] === "clone")).toBe(false);
+    expect(w.launched).toEqual([]);
+});
+
+test("failed build restores dist and never injects", async () => {
+    const w = makeWorld({ alreadyInstalled: true, buildFails: true });
+    expect(await kindOf(runOperation("build", w.deps()))).toBe("build");
+    expect(readFileSync(join(w.paths.checkout, "dist", "patcher.js"), "utf8")).toBe("old build");
+    expect(injectCalls(w)).toHaveLength(0);
+});
+
+test("inject refuses while Discord runs unless the user agreed to close it", async () => {
+    const w = makeWorld({ alreadyInstalled: true, discordRunning: true });
+    expect(await kindOf(runOperation("inject", w.deps()))).toBe("discord-running");
+    expect(injectCalls(w)).toHaveLength(0);
+    await runOperation("inject", w.deps({ closeDiscordFirst: true }));
+    expect(injectCalls(w)).toHaveLength(1);
+    expect(w.launched).toEqual(["stable"]);
+});
+
+test("inject runs again even when Discord is already injected", async () => {
+    const w = makeWorld({ alreadyInstalled: true });
+    expect(injection(w)).toBe("injected");
+    await runOperation("inject", w.deps());
+    expect(injectCalls(w)).toHaveLength(1);
+    const ids = w.events.filter(e => e.type === "step" && e.status === "done").map(e => (e as any).id);
+    expect(ids).toEqual(["discord", "inject", "verify", "launch"]);
+    expect(w.calls.some(c => c.args[0] === "clone" || c.args[3] === "build")).toBe(false);
+});

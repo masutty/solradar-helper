@@ -90,3 +90,22 @@ test("multiple Discord installs are listed for selection", () => {
     expect(v.discord.running).toBe(true);
     expect(v.discord.label).toBe("Discord PTB is running");
 });
+
+const upToDate = (): UpdateInfo => ({ vencord: { local: "abc1234def", remote: "abc1234def" }, solradar: { localCommit: "p1", remoteCommit: "p1", localVersion: "1.3.6", remoteVersion: "1.3.6" }, helper: { current: "0.1.0" }, failed: false });
+
+test("update label: Reinstall only when installed and the check found nothing", () => {
+    expect(deriveView(snap(installed()), upToDate()).updateLabel).toBe("Reinstall");
+    const changed = { ...upToDate(), solradar: { ...upToDate().solradar, remoteCommit: "p2" } };
+    expect(deriveView(snap(installed()), changed).updateLabel).toBe("Update");
+    expect(deriveView(snap(installed()), { ...upToDate(), failed: true }).updateLabel).toBe("Update");
+    expect(deriveView(snap(installed()), null).updateLabel).toBe("Update");
+});
+
+test("advanced tools: build needs the checkout, inject needs a built Vencord", () => {
+    expect(deriveView(snap(), null).advanced).toEqual({ build: false, inject: false });
+    expect(deriveView(snap(installed()), null).advanced).toEqual({ build: true, inject: true });
+    const unbuilt = deriveView(snap({ vencord: { state: "ready", built: false }, solradar: { state: "ready" } }), null);
+    expect(unbuilt.advanced).toEqual({ build: true, inject: false });
+    const noDiscord = deriveView(snap({ ...installed(), discord: { installs: [], running: false, injection: "not-injected" } }), null);
+    expect(noDiscord.advanced.inject).toBe(false);
+});
