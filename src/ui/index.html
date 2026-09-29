@@ -231,7 +231,7 @@ async function startOperation(op) {
   const needsClose = v.discord.running && (op === "install" || op === "uninstall" || op === "inject" || (op === "update" && !v.discord.injected));
   const lines = [];
   if (op === "update" && v.updateLabel === "Reinstall") lines.push("Your system already looks up to date. Do you want to reinstall anyway?");
-  if (op === "uninstall") lines.push("This removes Vencord from Discord completely — not only SolRadar. If you want regular Vencord back afterwards, use the official Vencord Installer.");
+  if (op === "uninstall") lines.push("This removes Vencord from Discord completely, not only SolRadar. If you want regular Vencord back afterwards, use the official Vencord Installer.");
   if (op === "repair") lines.push("The Helper's copy of Vencord or SolRadar has unexpected changes. Repair discards those changes and restores the original files.");
   if (needsClose) lines.push("Discord needs to be closed and will be closed now.");
   if (op === "update" && v.discord.running && !needsClose) lines.push("Discord will restart when the update is done.");
@@ -485,7 +485,7 @@ function buildItems() {
       for (let i = items.length - 1; i >= 0; i--) if (items[i].type === "step" && items[i].state === "run" && items[i].label === label) { g = items[i]; break; }
       if (!g) { g = { ...base, type: "step", label }; items.push(g); }
       g.state = mark === "✓" ? "done" : mark === "✗" ? "failed" : "skipped";
-      g.text = mark === "–" ? `${label} — skipped${skip ? `: ${skip[2]}` : ""}` : label;
+      g.text = mark === "–" ? `${label} (skipped${skip ? `: ${skip[2]}` : ""})` : label;
       continue;
     }
     const last = items[items.length - 1];
@@ -730,7 +730,7 @@ function render() {
     const strip = stripEl();
     if (strip) parts.push(strip);
     if (h.depFailed) parts.push(el("div", { class: "small err", text: h.depFailed }));
-    if (h.winget) parts.push(el("div", { class: "small muted", text: "Windows may ask for permission to make changes. That request is for this installation — click Yes." }));
+    if (h.winget) parts.push(el("div", { class: "small muted", text: "Windows may ask for permission to make changes. That request is for this installation, so click Yes." }));
     if (h.note) parts.push(el("div", { class: "small muted", text: h.note }));
     if (h.dep) parts.push(selfSteps(h.dep));
     if (ui.op && ui.result && ui.result.ok && ui.result.op === "uninstall") parts.push(el("div", { class: "row small muted" },
@@ -738,7 +738,7 @@ function render() {
       el("button", { class: "link", onclick: () => send({ type: "open-url", url: VENCORD_INSTALLER_URL }), text: "Open Vencord Installer page" })));
   }
   parts.push(...activitySection());
-  parts.push(el("footer", { text: "Unofficial tool — not affiliated with Vencord or Discord." }));
+  parts.push(el("footer", { text: "Unofficial tool. Not affiliated with Vencord or Discord." }));
   app.replaceChildren(...parts);
   syncLogScroll();
   applyFocus();
