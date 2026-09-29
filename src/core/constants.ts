@@ -1,7 +1,7 @@
-import pkg from "../../package.json";
+import versionFile from "../../version.json";
 
 export const HELPER_NAME = "SolRadar Helper";
-export const HELPER_VERSION: string = pkg.version;
+export const HELPER_VERSION: string = versionFile.version;
 
 export const VENCORD_REPO = "https://github.com/Vendicated/Vencord.git";
 export const SOLRADAR_REPO = "https://gitlab.com/masutty/solradar.git";
