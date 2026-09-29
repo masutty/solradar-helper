@@ -9,8 +9,6 @@
 
 Install, update and remove the SolRadar Vencord plugin without opening a terminal.
 
-[![Latest release](https://img.shields.io/github/v/release/masutty/solradar-helper)](https://github.com/masutty/solradar-helper/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/masutty/solradar-helper/total)](https://github.com/masutty/solradar-helper/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#requirements)
 [![License](https://img.shields.io/github/license/masutty/solradar-helper)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/built%20with-Bun-000000?logo=bun&logoColor=white)](https://bun.sh)
@@ -23,12 +21,14 @@ Install, update and remove the SolRadar Vencord plugin without opening a termina
 
 This is **not** an official Vencord installer, and it is not affiliated with the Vencord project in any way. It is a convenience tool. It installs Vencord from source together with the [SolRadar](https://gitlab.com/masutty/solradar) plugin, because the people who use this plugin would otherwise need to open a terminal. That is all.
 
-## Download
+## Getting the Helper
 
-Get the latest `SolRadarHelper.exe` from [Releases](https://github.com/masutty/solradar-helper/releases/latest) and run it. The Helper clones, builds and injects everything for you.
+The app is published in the **Releases** section of this repository, in the sidebar on the right of the repository page. Open the latest release, get `SolRadarHelper.exe` there and run it. The Helper clones, builds and injects everything for you.
+
+If you prefer, you can build it yourself from this source code. See [Build it yourself](#build-it-yourself).
 
 > [!NOTE]
-> **Your antivirus or Windows SmartScreen might flag the file.** This is expected. The exe is not code-signed, because a certificate is too expensive for a personal project. The source code is fully reviewable in this repository. If Windows shows **"Windows protected your PC"**, click **More info**, then **Run anyway**.
+> **The app is not code-signed.** A code-signing certificate is too expensive for a personal project, so Windows SmartScreen may show a warning the first time you open it. All of the source code is in this repository, and you can build the exe yourself if you prefer.
 
 ## What it does
 
