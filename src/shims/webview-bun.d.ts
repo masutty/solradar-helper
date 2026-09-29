@@ -10,6 +10,7 @@ export declare enum SizeHint {
 export declare class Webview {
     constructor(debug?: boolean, size?: { width: number; height: number; hint: SizeHint });
     title: string;
+    readonly unsafeWindowHandle: unknown;
     size: { width: number; height: number; hint: SizeHint };
     bind(name: string, callback: (...args: any[]) => unknown): void;
     setHTML(html: string): void;

@@ -3,7 +3,7 @@ import htmlText from "./ui/index.html" with { type: "text" };
 import { HELPER_NAME, WEBVIEW2_URL } from "./core/constants";
 import { appPaths } from "./core/paths";
 import { acquireSingleInstance } from "./core/singleInstance";
-import { openUrl, showMessageBox, webView2Installed } from "./core/win32";
+import { openUrl, setWindowIcon, showMessageBox, webView2Installed } from "./core/win32";
 import { SharedQueue } from "./shared/queue";
 import type { UiCommand, WorkerMessage, WorkerReply } from "./shared/protocol";
 
@@ -42,6 +42,7 @@ try {
 }
 
 webview.title = HELPER_NAME;
+setWindowIcon(webview.unsafeWindowHandle as unknown as number | bigint | null);
 // Minimum size first, then the initial (still resizable) size.
 webview.size = { width: 720, height: 620, hint: SizeHint.MIN };
 webview.size = { width: 860, height: 780, hint: SizeHint.NONE };

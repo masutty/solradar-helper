@@ -62,3 +62,30 @@ export function openFolder(path: string): void {
 export function revealFile(path: string): void {
     handOff([explorer(), `/select,${path}`]);
 }
+
+/** Gives the window the icon embedded in the compiled exe. Best effort; does nothing under `bun run` or on failure. */
+export function setWindowIcon(hwnd: number | bigint | null | undefined, exePath: string = process.execPath): void {
+    try {
+        if (!hwnd || /^bun(\.exe)?$/i.test(exePath.split(/[\/]/).pop() ?? "")) return;
+        const shell32 = dlopen("shell32.dll", {
+            ExtractIconExW: { args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.ptr, FFIType.u32], returns: FFIType.u32 },
+        });
+        const user32 = dlopen("user32.dll", {
+            SendMessageW: { args: [FFIType.ptr, FFIType.u32, FFIType.u64, FFIType.u64], returns: FFIType.i64 },
+        });
+        try {
+            const large = new BigUint64Array(1);
+            const small = new BigUint64Array(1);
+            if (shell32.symbols.ExtractIconExW(wide(exePath), 0, large, small, 1) === 0) return;
+            const WM_SETICON = 0x0080;
+            const target = hwnd as unknown as FFIType.ptr;
+            if (small[0]) user32.symbols.SendMessageW(target, WM_SETICON, 0n, small[0]); // ICON_SMALL
+            if (large[0]) user32.symbols.SendMessageW(target, WM_SETICON, 1n, large[0]); // ICON_BIG
+        } finally {
+            shell32.close();
+            user32.close();
+        }
+    } catch {
+        // The default icon stays; not worth failing startup.
+    }
+}
