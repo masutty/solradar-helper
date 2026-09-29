@@ -111,7 +111,7 @@ Other scripts: `bun run dev` (run from source), `bun test`, `bun run typecheck`.
 - [Vencord](https://github.com/Vendicated/Vencord): the project this builds on.
 - [SolRadar](https://gitlab.com/masutty/solradar): the plugin this Helper installs.
 - Vencord Installer: used by Vencord's own inject script to patch Discord.
-- Radar icon: from [SVG Repo](https://www.svgrepo.com). See svgrepo.com for its license.
+- Radar icon: "Radar" from the Solar Line Duotone Icons collection by [Solar Icons](https://www.svgrepo.com/collection/solar-line-duotone-icons/), via [SVG Repo](https://www.svgrepo.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Recolored and placed on a colored tile for the app icon.
 - Brand icons (Git, Node.js, Discord, Vencord): [Simple Icons](https://simpleicons.org), CC0.
 - [Bun](https://bun.sh) and [webview-bun](https://github.com/tr1ckydev/webview-bun).
 
