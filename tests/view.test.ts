@@ -109,3 +109,14 @@ test("advanced tools: build needs the checkout, inject needs a built Vencord", (
     const noDiscord = deriveView(snap({ ...installed(), discord: { installs: [], running: false, injection: "not-injected" } }), null);
     expect(noDiscord.advanced.inject).toBe(false);
 });
+
+test("strip values: compact versions for Vencord and SolRadar", () => {
+    const fresh = deriveView(snap(), null);
+    expect(fresh.vencord.short).toBe("not yet");
+    expect(fresh.solradar).toMatchObject({ short: "not yet", latest: undefined });
+    const u: UpdateInfo = { ...upToDate(), solradar: { localCommit: "p1", remoteCommit: "p2", localVersion: "1.3.6", remoteVersion: "1.4.0" } };
+    const v = deriveView(snap(installed()), u);
+    expect(v.vencord.short).toBe("abc1234");
+    expect(v.solradar).toMatchObject({ short: "1.3.6 → 1.4.0", latest: "1.4.0", tone: "warn" });
+    expect(deriveView(snap(installed()), upToDate()).solradar).toMatchObject({ short: "1.3.6", latest: undefined, tone: "ok" });
+});

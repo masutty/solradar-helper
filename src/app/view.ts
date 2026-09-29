@@ -33,8 +33,10 @@ export interface ViewModel {
         selected?: DiscordBranch;
     };
     dependencies: DependencyView[];
-    vencord: { label: string; tone: Tone };
-    solradar: { label: string; tone: Tone };
+    /** `short` is a compact value for the status strip, for example "abc1234" or "not yet". */
+    vencord: { label: string; tone: Tone; short: string };
+    /** `latest` is set only when a newer SolRadar version is known. */
+    solradar: { label: string; tone: Tone; short: string; latest?: string };
     updateText?: string;
     /** "Reinstall" when installed and the update check succeeded with nothing new; otherwise "Update". */
     updateLabel: "Update" | "Reinstall";
@@ -92,6 +94,8 @@ export function deriveView(s: Snapshot, u: UpdateInfo | null, simulations: Simul
             : "New Vencord or SolRadar changes are available.";
     }
 
+    const remote = u?.solradar.remoteVersion;
+    const latestVersion = hasUpdate && remote && remote !== u?.solradar.localVersion ? remote : undefined;
     const helperLatest = u?.helper.latest;
     return {
         headline, subline, tone, installed,
@@ -111,6 +115,11 @@ export function deriveView(s: Snapshot, u: UpdateInfo | null, simulations: Simul
                 : vencord.state === "unknown" ? "Can't check (Git is missing)"
                 : "Incomplete",
             tone: vencord.state === "ready" && vencord.built ? "ok" : vencord.state === "modified" ? "warn" : "neutral",
+            short: vencord.state === "ready" && vencord.built ? (vencord.commit?.slice(0, 7) ?? "built")
+                : vencord.state === "modified" ? "changed"
+                : vencord.state === "absent" ? "not yet"
+                : vencord.state === "unknown" ? "unknown"
+                : "incomplete",
         },
         solradar: {
             label: solradar.state === "ready" ? `Version ${solradar.version ?? "unknown"}`
@@ -118,7 +127,13 @@ export function deriveView(s: Snapshot, u: UpdateInfo | null, simulations: Simul
                 : solradar.state === "absent" ? "Not installed"
                 : solradar.state === "unknown" ? "Can't check (Git is missing)"
                 : "Incomplete",
-            tone: solradar.state === "ready" ? "ok" : solradar.state === "modified" ? "warn" : "neutral",
+            tone: solradar.state === "ready" ? (latestVersion ? "warn" : "ok") : solradar.state === "modified" ? "warn" : "neutral",
+            short: solradar.state === "ready" ? (latestVersion ? `${solradar.version ?? "?"} → ${latestVersion}` : (solradar.version ?? "unknown"))
+                : solradar.state === "modified" ? "changed"
+                : solradar.state === "absent" ? "not yet"
+                : solradar.state === "unknown" ? "unknown"
+                : "incomplete",
+            latest: latestVersion,
         },
         updateText,
         updateLabel: installed && u && !u.failed && !hasUpdate ? "Reinstall" : "Update",
