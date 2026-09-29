@@ -69,7 +69,7 @@ In **⋯ → Test scenarios** you can simulate situations such as a missing Git,
 
 - It never reads your Discord account or token.
 - It has no telemetry.
-- Its only network calls are to GitHub, GitLab and npm, for downloads and update checks.
+- It only connects to the internet to download and check for updates: GitHub (Vencord, Vencord's installer, Helper updates), GitLab (SolRadar), the npm registry (Vencord's packages) and, only when you click "Install automatically" for Git or Node.js, Windows Package Manager (winget) and the official download sites of those tools.
 
 ## FAQ
 
