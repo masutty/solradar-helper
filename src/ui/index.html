@@ -40,6 +40,17 @@
   .steps .icon { width: 18px; text-align: center; }
   .steps .running { font-weight: 600; }
   .steps .detail { color: var(--muted); font-size: 12px; }
+  .st-running { color: var(--accent); } .st-done { color: var(--ok); } .st-failed { color: var(--error); }
+  .st-skipped { color: var(--log-time); } .st-pending { color: var(--muted); }
+  .current { font-size: 16px; font-weight: 600; margin: 4px 0 0; }
+  .linkbtn { background: none; border: none; padding: 4px 0; color: var(--muted); text-decoration: underline; font-size: 12px; margin: 6px 0; }
+  .adv { margin-top: 4px; }
+  .adv .tool { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 0; }
+  .adv .tool + .tool { border-top: 1px solid var(--line); }
+  .adv .tool .note { margin: 0; }
+  .adv .sims { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .adv .sims button.on { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; color: var(--warn); border: 1px solid var(--warn); border-radius: 999px; padding: 1px 10px; margin-bottom: 8px; }
   .output { font: 12px Consolas, monospace; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 8px; }
   .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 12px 0; }
   .bar::after { content: ""; display: block; width: 30%; height: 100%; background: var(--accent); animation: slide 1.2s infinite ease-in-out; }
@@ -59,7 +70,7 @@
   .log .ln { padding: 0 10px; white-space: pre-wrap; word-break: break-word; border-left: 3px solid transparent; }
   .log .ts { color: var(--log-time); margin-right: 8px; }
   .log .ln.cmd { color: var(--log-cmd); }
-  .log .ln.out { color: var(--muted); padding-left: 28px; }
+  .log .ln.out { color: var(--muted); }
   .log .ln.step { color: var(--log-step); font-weight: 700; }
   .log .ln.warn { color: var(--log-warn); }
   .log .ln.error { color: var(--log-error); font-weight: 700; background: var(--log-error-bg); border-left-color: var(--log-error); padding-top: 2px; padding-bottom: 2px; margin: 2px 0; }
@@ -108,7 +119,7 @@ const DISCORD_DOWNLOAD_URL = "https://discord.com/download";
 const HELP_URL = "https://github.com/masutty/solradar-helper#readme";
 
 const ui = { view: null, busy: false, op: null, steps: [], cancellable: true, lastLine: "", result: null, deps: {}, showManual: {}, redact: true, fatal: null,
-  starting: false, logs: [], logDirty: true, showActivity: false, logStick: true, logTop: 0, showBackground: false, logError: null };
+  starting: false, showSteps: null, showAdvanced: false, showSims: false, logs: [], logDirty: true, showActivity: false, logStick: true, logTop: 0, showBackground: false, logError: null };
 const send = cmd => {
   const p = window.__send(cmd);
   if (p && typeof p.catch === "function") p.catch(() => {});
@@ -148,7 +159,7 @@ function confirmDialog(text) {
 
 // Show the progress screen right away; the backend's "steps" event replaces this placeholder.
 function runOp(op, closeDiscord) {
-  ui.result = null; ui.op = op; ui.steps = []; ui.lastLine = ""; ui.cancellable = true; ui.starting = true;
+  ui.result = null; ui.op = op; ui.steps = []; ui.lastLine = ""; ui.cancellable = true; ui.starting = true; ui.showSteps = null;
   render();
   send({ type: "run", op, closeDiscord });
 }
@@ -161,12 +172,14 @@ function toast(text) {
 
 async function startOperation(op) {
   const v = ui.view;
-  const needsClose = v.discord.running && (op === "install" || op === "uninstall" || (op === "update" && !v.discord.injected));
+  const needsClose = v.discord.running && (op === "install" || op === "uninstall" || op === "inject" || (op === "update" && !v.discord.injected));
   const lines = [];
+  if (op === "update" && v.updateLabel === "Reinstall") lines.push("Your system already looks up to date. Do you want to reinstall anyway?");
   if (op === "uninstall") lines.push("This removes Vencord from Discord completely — not only SolRadar. If you want regular Vencord back afterwards, use the official Vencord Installer.");
   if (op === "repair") lines.push("The Helper's copy of Vencord or SolRadar has unexpected changes. Repair discards those changes and restores the original files.");
   if (needsClose) lines.push("Discord needs to be closed and will be closed now.");
   if (op === "update" && v.discord.running && !needsClose) lines.push("Discord will restart when the update is done.");
+  if (op === "inject" && !needsClose) lines.push("SolRadar will be applied to Discord again.");
   if (lines.length && !(await confirmDialog(lines.join("\n\n")))) return;
   runOp(op, needsClose);
 }
@@ -174,7 +187,7 @@ async function startOperation(op) {
 function handle(e) {
   switch (e.type) {
     case "view": ui.view = e.view; ui.busy = e.busy; break;
-    case "steps": ui.op = e.op; ui.steps = e.steps; ui.result = null; ui.starting = false; ui.lastLine = ""; ui.cancellable = true; break;
+    case "steps": ui.op = e.op; ui.steps = e.steps; ui.result = null; ui.starting = false; ui.lastLine = ""; ui.cancellable = true; ui.showSteps = null; break;
     case "step": {
       const s = ui.steps.find(x => x.id === e.id);
       if (s) { s.status = e.status; s.detail = e.detail; }
@@ -197,28 +210,51 @@ function handle(e) {
       ui.deps[e.id] = e;
       if (e.status === "done") toast("Installed successfully.");
       break;
+    case "show-activity": ui.showActivity = true; ui.logStick = true; ui.logDirty = true; break;
     case "report-ready": toast("Debug report saved. Explorer will show the file."); break;
     case "fatal": ui.fatal = e.message; break;
   }
 }
 
 const ICON = { pending: "○", running: "→", done: "✓", failed: "✗", skipped: "–" };
+
+// Skipped steps count as finished.
+function stepSummary() {
+  const total = ui.steps.length;
+  const finished = ui.steps.filter(x => x.status === "done" || x.status === "skipped").length;
+  const cancelled = ui.result && !ui.result.ok && ui.result.error.kind === "cancelled";
+  const failedIdx = cancelled ? -1 : ui.steps.findIndex(x => x.status === "failed");
+  const runningIdx = ui.steps.findIndex(x => x.status === "running");
+  if (failedIdx >= 0) return { status: "failed", text: `Step ${failedIdx + 1}/${total} failed · ${ui.steps[failedIdx].label}`, failed: true };
+  if (ui.result) return { status: ui.result.ok ? "done" : "pending", text: `${finished}/${total} steps`, failed: false };
+  if (runningIdx >= 0) return { status: "running", text: `Step ${runningIdx + 1}/${total} · ${ui.steps[runningIdx].label}`, failed: false };
+  return { status: "pending", text: `${finished}/${total} steps`, failed: false };
+}
 const SUCCESS = {
   install: "SolRadar installed successfully",
   update: "SolRadar updated successfully",
   uninstall: "Vencord was removed from Discord",
   repair: "Repair complete",
+  build: "SolRadar rebuilt successfully",
+  inject: "SolRadar re-applied to Discord",
 };
+const RUNNING = { install: "Installing SolRadar…", update: "Updating SolRadar…", uninstall: "Removing Vencord…", repair: "Repairing…", build: "Rebuilding SolRadar…", inject: "Re-applying to Discord…" };
 
 function progressScreen() {
   const r = ui.result;
-  const title = r ? (r.ok ? SUCCESS[r.op] : "Something went wrong") : ui.starting ? "Starting…" : ({ install: "Installing SolRadar…", update: "Updating SolRadar…", uninstall: "Removing Vencord…", repair: "Repairing…" })[ui.op];
+  const title = r ? (r.ok ? SUCCESS[r.op] : "Something went wrong") : ui.starting ? "Starting…" : RUNNING[ui.op];
   const children = [
     el("h1", { class: r ? (r.ok ? "tone-ok" : "tone-error") : "", text: title }),
-    el("ul", { class: "steps" }, ui.steps.map(s => el("li", { class: s.status },
-      el("span", { class: "icon", text: ICON[s.status] }),
-      el("div", {}, el("div", { text: s.label }), s.detail ? el("div", { class: "detail", text: s.detail }) : null)))),
   ];
+  if (ui.steps.length) {
+    const sum = stepSummary();
+    const expanded = ui.showSteps ?? sum.failed;
+    children.push(el("div", { class: `current st-${sum.status}`, text: sum.text }));
+    children.push(el("button", { class: "linkbtn", onclick: () => { ui.showSteps = !expanded; render(); }, text: expanded ? "Hide all steps" : "Show all steps" }));
+    if (expanded) children.push(el("ul", { class: "steps" }, ui.steps.map(s => el("li", { class: `${s.status} st-${s.status}` },
+      el("span", { class: "icon", text: ICON[s.status] }),
+      el("div", {}, el("div", { text: s.label }), s.detail ? el("div", { class: "detail", text: s.detail }) : null)))));
+  }
   children.push(activityPanel());
   if (!r) {
     children.push(el("div", { class: "bar" }));
@@ -258,7 +294,11 @@ const logPre = el("div", { class: "log", onscroll: () => {
 } });
 
 function logLine(entry) {
-  const prefix = entry.kind === "cmd" ? "$ " : entry.level === "error" ? "ERROR " : "";
+  // The timestamp column stays aligned; only the text is marked as belonging to the command above.
+  const prefix = entry.kind === "cmd" ? "$ "
+    : entry.kind === "out" ? "  │ "
+    : entry.level !== "error" && /^exit -?\d+$/.test(entry.text) ? "  └ "
+    : entry.level === "error" ? "ERROR " : "";
   return el("div", { class: `ln ${entry.kind} ${entry.level}` }, el("span", { class: "ts", text: entry.ts }), prefix + entry.text);
 }
 
@@ -302,6 +342,38 @@ function dependencyCard(d) {
       el("button", { onclick: () => send({ type: "open-url", url: d.downloadUrl }), text: "Open download page" })) : null);
 }
 
+const SIMS = [
+  ["solradar-update", "SolRadar update available"], ["vencord-update", "Vencord update available"],
+  ["helper-update", "New Helper version available"], ["update-failed", "Update check failed"],
+  ["git-missing", "Git missing"], ["node-missing", "Node.js missing"], ["node-old", "Node.js too old"],
+  ["discord-missing", "Discord not found"], ["discord-running", "Discord running"],
+];
+
+function tool(label, desc, disabled, onclick) {
+  return el("div", { class: "tool" }, el("button", { disabled, onclick, text: label }), el("p", { class: "note", text: desc }));
+}
+
+function advancedSection(v) {
+  const adv = v.advanced;
+  const parts = [el("button", { class: "linkbtn", onclick: () => { ui.showAdvanced = !ui.showAdvanced; render(); }, text: ui.showAdvanced ? "Hide troubleshooting tools" : "Troubleshooting tools" })];
+  if (!ui.showAdvanced) return el("div", { class: "adv" }, parts);
+  parts.push(el("p", { class: "note", text: "You normally don't need these. Use them if something looks wrong or if support asks you to." }));
+  parts.push(tool("Rebuild SolRadar", "Rebuilds using the files already downloaded. Your Discord keeps working if it fails.", ui.busy || !adv.build, () => startOperation("build")));
+  parts.push(tool("Re-apply to Discord", "Applies SolRadar to Discord again, for example after a Discord update.", ui.busy || !adv.inject, () => startOperation("inject")));
+  parts.push(tool("Show versions", "Lists the installed and latest versions in the activity log.", ui.busy, () => send({ type: "show-versions" })));
+  parts.push(tool("Open installation folder", "Opens the folder where SolRadar Helper keeps its files.", false, () => send({ type: "open-root" })));
+  parts.push(el("button", { class: "linkbtn", onclick: () => { ui.showSims = !ui.showSims; render(); }, text: ui.showSims ? "Hide test scenarios" : "Test scenarios" }));
+  if (ui.showSims) {
+    parts.push(el("p", { class: "note", text: "These only change what this window shows, to test how it reacts. Nothing on your computer is changed. Restarting the Helper clears them." }));
+    parts.push(el("div", { class: "sims" },
+      SIMS.map(([id, label]) => { const on = v.simulations.includes(id);
+        return el("button", { class: on ? "on" : "", onclick: () => send({ type: "simulate", id, on: !on }), text: `${label}: ${on ? "on" : "off"}` }); }),
+      el("button", { onclick: () => send({ type: "simulate-error" }), text: "Show an error in the activity" }),
+      el("button", { disabled: !v.simulations.length, onclick: () => send({ type: "simulate-clear" }), text: "Clear all" })));
+  }
+  return el("div", { class: "adv" }, parts);
+}
+
 function mainScreen() {
   const v = ui.view;
   const deps = v.dependencies;
@@ -309,6 +381,7 @@ function mainScreen() {
   if (v.helperUpdate) children.push(el("div", { class: "card banner row" },
     el("span", { text: `A new version of SolRadar Helper is available (${v.helperUpdate.latest}).` }),
     el("button", { onclick: () => send({ type: "open-url", url: v.helperUpdate.url }), text: "Download" })));
+  if (v.simulations.length) children.push(el("div", { class: "badge", text: "Test scenario active" }));
   children.push(el("h1", { class: `tone-${v.tone}`, text: v.headline }));
   children.push(el("p", { class: "sub", text: v.subline || v.updateText || "" }));
   if (v.subline && v.updateText) children.push(el("p", { class: "sub", text: v.updateText }));
@@ -336,9 +409,10 @@ function mainScreen() {
   children.push(el("div", { class: "actions" },
     a.repair ? el("button", { class: "primary", disabled: ui.busy, onclick: () => startOperation("repair"), text: "Repair" }) : null,
     a.install ? el("button", { class: "primary", disabled: ui.busy, onclick: () => startOperation("install"), text: "Install" }) : null,
-    a.update ? el("button", { class: v.updateText ? "primary" : "", disabled: ui.busy, onclick: () => startOperation("update"), text: "Update" }) : null,
+    a.update ? el("button", { class: v.updateText ? "primary" : "", disabled: ui.busy, onclick: () => startOperation("update"), text: v.updateLabel }) : null,
     a.uninstall ? el("button", { class: "danger", disabled: ui.busy, onclick: () => startOperation("uninstall"), text: "Uninstall" }) : null,
     el("button", { disabled: ui.busy, onclick: () => send({ type: "refresh" }), text: "Check again" })));
+  children.push(advancedSection(v));
   return children;
 }
 
