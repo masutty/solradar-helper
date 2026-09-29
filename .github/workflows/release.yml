@@ -24,9 +24,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Pushes (version bump commit, tag) authenticate as the repository admin,
-          # who is on the bypass list of the "pr-only" ruleset. GITHUB_TOKEN can't bypass it.
-          token: ${{ secrets.SORAHELPER_RELEASE_TOKEN }}
+          # Pushes (version bump commit, tag) use a write deploy key. Only this key is on the
+          # bypass list of the "pr-only" ruleset; people and GITHUB_TOKEN still need a PR.
+          ssh-key: ${{ secrets.SORAHELPER_DEPLOY_KEY }}
 
       - uses: oven-sh/setup-bun@v2
         with:
