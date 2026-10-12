@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createCommandRunner } from "../src/core/commands";
 import { createLogger } from "../src/core/logger";
-import { cloneRepo, discardChanges, fetchAndReset, inspectRepo, normalizeRemote, remoteHead, resetTo, type ServiceCtx } from "../src/services/git";
+import { cloneRepo, discardChanges, fetchAndReset, inspectRepo, normalizeRemote, remoteHead, resetTo, setRemote, type ServiceCtx } from "../src/services/git";
 import { readPluginVersion } from "../src/services/solradar";
 import { tempDir } from "./helpers";
 
@@ -35,6 +35,23 @@ beforeAll(() => {
 
 test("normalizeRemote ignores case, .git suffix and trailing slash", () => {
     expect(normalizeRemote("https://GitLab.com/masutty/solradar.git\n")).toBe(normalizeRemote("https://gitlab.com/masutty/solradar/"));
+});
+
+test("a legacy remote counts as ready only when listed, and setRemote moves it", async () => {
+    const { bare } = makeRemote();
+    const dir = join(tempDir(), "plugin");
+    expect((await cloneRepo(ctx, bare, dir)).exitCode).toBe(0);
+    const newRemote = join(tempDir(), "new-home.git");
+
+    expect((await inspectRepo(ctx, dir, newRemote, "index.tsx")).state).toBe("invalid");
+    const legacy = await inspectRepo(ctx, dir, newRemote, "index.tsx", [bare]);
+    expect(legacy.state).toBe("ready");
+    expect(legacy.legacyRemote).toBe(true);
+
+    expect((await setRemote(ctx, dir, newRemote)).exitCode).toBe(0);
+    const moved = await inspectRepo(ctx, dir, newRemote, "index.tsx", [bare]);
+    expect(moved.state).toBe("ready");
+    expect(moved.legacyRemote).toBeUndefined();
 });
 
 test("absent → clone → ready, with version readable", async () => {

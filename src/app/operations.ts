@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import type { CommandResult, CommandRunner } from "../core/commands";
-import { SOLRADAR_REPO, VENCORD_REPO } from "../core/constants";
+import { SOLRADAR_LEGACY_REPOS, SOLRADAR_REPO, VENCORD_REPO } from "../core/constants";
 import type { ToolEnv } from "../core/env";
 import { HelperError, toHelperError, type ErrorKind } from "../core/errors";
 import type { Logger } from "../core/logger";
@@ -9,7 +9,7 @@ import { checkDependency, DEPENDENCIES, minNodeMajor } from "../services/depende
 import {
     closeDiscord, findDiscordInstalls, isDiscordRunning, launchDiscord, pickInstall, readInjection, type DiscordInstall,
 } from "../services/discord";
-import { cloneRepo, discardChanges, fetchAndReset, inspectRepo, resetTo, type ServiceCtx } from "../services/git";
+import { cloneRepo, discardChanges, fetchAndReset, inspectRepo, resetTo, setRemote, type ServiceCtx } from "../services/git";
 import {
     backupDist, buildVencord, inject, installPackages, isBuilt, readVencordPackage, restoreDist, uninject,
 } from "../services/vencord";
@@ -131,8 +131,8 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
 
     if (kind === "repair") {
         await step("repair", async () => {
-            for (const [dir, url, marker] of [[paths.checkout, VENCORD_REPO, "package.json"], [paths.plugin, SOLRADAR_REPO, "index.tsx"]] as const) {
-                if ((await inspectRepo(ctx, dir, url, marker)).state === "modified") {
+            for (const [dir, url, marker, legacy] of [[paths.checkout, VENCORD_REPO, "package.json", []], [paths.plugin, SOLRADAR_REPO, "index.tsx", SOLRADAR_LEGACY_REPOS]] as const) {
+                if ((await inspectRepo(ctx, dir, url, marker, legacy)).state === "modified") {
                     ensureOk(await discardChanges(ctx, dir), "unknown", "The files could not be repaired. Open the log for details.");
                 }
             }
@@ -203,13 +203,15 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
     }
 
     const previous: { vencord?: string; plugin?: string } = {};
-    const syncRepo = async (id: "vencord" | "solradar", dir: string, url: string, marker: string, name: string) => {
+    const syncRepo = async (id: "vencord" | "solradar", dir: string, url: string, marker: string, name: string, legacy: readonly string[] = []) => {
         await step(id, async () => {
-            const st = await inspectRepo(ctx, dir, url, marker);
+            const st = await inspectRepo(ctx, dir, url, marker, legacy);
             if (st.state === "modified") {
                 throw new HelperError("checkout-modified", `The Helper's copy of ${name} has unexpected changes. Use Repair on the main screen, then try again.`, st.detail);
             }
             if (st.state === "ready") {
+                // Same commits live at the new address, so moving origin keeps the checkout as it is.
+                if (st.legacyRemote) ensureOk(await setRemote(ctx, dir, url), "unknown", `${name} could not be moved to its new download address. Open the log for details.`);
                 if (kind === "install") return skip(id, "Already downloaded");
                 if (id === "vencord") previous.vencord = st.commit; else previous.plugin = st.commit;
                 ensureOk(await fetchAndReset(ctx, dir), "network", `${name} could not be updated. Check your internet connection and try again.`);
@@ -224,7 +226,7 @@ async function pipeline(kind: OperationKind, deps: OperationDeps, flags: Flags):
         try {
             await syncRepo("vencord", paths.checkout, VENCORD_REPO, "package.json", "Vencord");
             mkdirSync(paths.userplugins, { recursive: true });
-            await syncRepo("solradar", paths.plugin, SOLRADAR_REPO, "index.tsx", "SolRadar");
+            await syncRepo("solradar", paths.plugin, SOLRADAR_REPO, "index.tsx", "SolRadar", SOLRADAR_LEGACY_REPOS);
 
             await step("packages", async () => {
                 ensureOk(await installPackages(ctx, paths), "network", "Vencord's packages could not be downloaded. Check your internet connection and try again.");
