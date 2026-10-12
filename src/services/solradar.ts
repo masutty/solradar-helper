@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SOLRADAR_REPO, SOLRADAR_VERSION_URL } from "../core/constants";
+import { SOLRADAR_LEGACY_REPOS, SOLRADAR_REPO, SOLRADAR_VERSION_URL } from "../core/constants";
 import type { AppPaths } from "../core/paths";
 import { inspectRepo, type RepoStatus, type ServiceCtx } from "./git";
 
@@ -18,7 +18,7 @@ export function readPluginVersion(dir: string): string | undefined {
 }
 
 export async function inspectPlugin(ctx: ServiceCtx, paths: AppPaths): Promise<PluginStatus> {
-    const status = await inspectRepo(ctx, paths.plugin, SOLRADAR_REPO, "index.tsx");
+    const status = await inspectRepo(ctx, paths.plugin, SOLRADAR_REPO, "index.tsx", SOLRADAR_LEGACY_REPOS);
     return { ...status, version: readPluginVersion(paths.plugin) };
 }
 

@@ -4,8 +4,10 @@ export const HELPER_NAME = "SolRadar Helper";
 export const HELPER_VERSION: string = versionFile.version;
 
 export const VENCORD_REPO = "https://github.com/Vendicated/Vencord.git";
-export const SOLRADAR_REPO = "https://gitlab.com/masutty/solradar.git";
-export const SOLRADAR_VERSION_URL = "https://gitlab.com/api/v4/projects/80066436/repository/files/version.json/raw?ref=main";
+export const SOLRADAR_REPO = "https://github.com/masutty/solradar.git";
+export const SOLRADAR_VERSION_URL = "https://raw.githubusercontent.com/masutty/solradar/main/version.json";
+// Where SolRadar lived before. A checkout that still points here counts as ours and is moved to SOLRADAR_REPO on the next update.
+export const SOLRADAR_LEGACY_REPOS = ["https://gitlab.com/masutty/solradar.git", "git@gitlab.com:masutty/solradar.git"];
 
 export const HELPER_LATEST_RELEASE_API = "https://api.github.com/repos/masutty/solradar-helper/releases/latest";
 export const HELPER_REPO_URL = "https://github.com/masutty/solradar-helper";

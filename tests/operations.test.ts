@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runOperation } from "../src/app/operations";
+import { SOLRADAR_REPO } from "../src/core/constants";
 import { HelperError } from "../src/core/errors";
 import { readInjection, findDiscordInstalls } from "../src/services/discord";
 import { makeWorld } from "./world";
@@ -52,6 +53,20 @@ test("update runs with Discord open, then restarts it", async () => {
     expect(w.state.heads).toEqual({ vencord: "v-new", plugin: "p-new" });
     expect(w.calls.some(c => c.cmd.endsWith("taskkill.exe"))).toBe(true); // restart at the end
     expect(w.launched).toEqual(["stable"]);
+});
+
+test("update moves a SolRadar checkout off the old GitLab address, without cloning again", async () => {
+    const w = makeWorld({ alreadyInstalled: true, pluginRemote: "https://gitlab.com/masutty/solradar.git" });
+    await runOperation("update", w.deps());
+    expect(w.state.pluginRemote).toBe(SOLRADAR_REPO);
+    expect(w.state.heads.plugin).toBe("p-new");
+    expect(w.calls.some(c => c.cmd === "git" && c.args[0] === "clone")).toBe(false);
+});
+
+test("a checkout with an unknown remote is still downloaded again", async () => {
+    const w = makeWorld({ alreadyInstalled: true, pluginRemote: "https://example.com/someone/fork.git" });
+    await runOperation("update", w.deps());
+    expect(w.calls.some(c => c.cmd === "git" && c.args[0] === "clone" && c.args.includes(SOLRADAR_REPO))).toBe(true);
 });
 
 test("failed build during update restores dist and both commits (review focus 5)", async () => {

@@ -14,6 +14,7 @@ export interface WorldOptions {
     injectedElsewhere?: boolean;
     vencordModified?: boolean;
     pluginFetchFails?: boolean;
+    pluginRemote?: string;
 }
 
 // A fake machine: temp LOCALAPPDATA with a Discord install, and a fake runner that
@@ -30,7 +31,7 @@ export function makeWorld(opts: WorldOptions = {}) {
     writeFileSync(join(nodeDir, "node_modules", "npm", "bin", "npx-cli.js"), "");
     const nodeExe = join(nodeDir, "node.exe");
 
-    const state = { running: !!opts.discordRunning, heads: { vencord: "v-old", plugin: "p-old" } };
+    const state = { running: !!opts.discordRunning, heads: { vencord: "v-old", plugin: "p-old" }, pluginRemote: opts.pluginRemote ?? SOLRADAR_REPO };
 
     const writeRepo = (dir: string, marker: string) => {
         mkdirSync(join(dir, ".git"), { recursive: true });
@@ -66,7 +67,11 @@ export function makeWorld(opts: WorldOptions = {}) {
         if (spec.cmd === "git") {
             const plugin = isPlugin(spec.cwd);
             if (a[0] === "rev-parse") return { stdout: plugin ? state.heads.plugin : state.heads.vencord };
-            if (a[0] === "remote") return { stdout: plugin ? SOLRADAR_REPO : VENCORD_REPO };
+            if (a[0] === "remote" && a[1] === "set-url") {
+                if (plugin) state.pluginRemote = a[3]!;
+                return {};
+            }
+            if (a[0] === "remote") return { stdout: plugin ? state.pluginRemote : VENCORD_REPO };
             if (a[0] === "status") return { stdout: !plugin && opts.vencordModified ? " M src/Vencord.ts" : "" };
             if (a[0] === "clone") {
                 const target = join(spec.cwd!, a.at(-1)!);

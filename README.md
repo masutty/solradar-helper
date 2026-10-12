@@ -12,14 +12,14 @@ Install, update and remove the SolRadar Vencord plugin without opening a termina
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D4)](#requirements)
 [![License](https://img.shields.io/github/license/masutty/solradar-helper)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/built%20with-Bun-000000?logo=bun&logoColor=white)](https://bun.sh)
-[![SolRadar plugin](https://img.shields.io/badge/plugin-SolRadar-7c86ff)](https://gitlab.com/masutty/solradar)
+[![SolRadar plugin](https://img.shields.io/badge/plugin-SolRadar-7c86ff)](https://github.com/masutty/solradar)
 ![Unofficial](https://img.shields.io/badge/unofficial-not%20affiliated%20with%20Vencord-e05d44)
 
 </div>
 
 ## About
 
-This is **not** an official Vencord installer, and it is not affiliated with the Vencord project in any way. It is a convenience tool. It installs Vencord from source together with the [SolRadar](https://gitlab.com/masutty/solradar) plugin, because the people who use this plugin would otherwise need to open a terminal. That is all.
+This is **not** an official Vencord installer, and it is not affiliated with the Vencord project in any way. It is a convenience tool. It installs Vencord from source together with the [SolRadar](https://github.com/masutty/solradar) plugin, because the people who use this plugin would otherwise need to open a terminal. That is all.
 
 ## Getting the Helper
 
@@ -92,7 +92,7 @@ The source code is in this repository, and you can review it or build the exe yo
 Do it by hand. Follow the [custom plugins guide](https://docs.vencord.dev/installing/custom-plugins/). In `src/userplugins`, run:
 
 ```sh
-git clone https://gitlab.com/masutty/solradar
+git clone https://github.com/masutty/solradar
 ```
 
 Then build and inject as the guide describes.
@@ -115,7 +115,7 @@ Merging to `main` publishes a release automatically. The version follows Convent
 ## Credits
 
 - [Vencord](https://github.com/Vendicated/Vencord): the project this builds on.
-- [SolRadar](https://gitlab.com/masutty/solradar): the plugin this Helper installs.
+- [SolRadar](https://github.com/masutty/solradar): the plugin this Helper installs.
 - Vencord Installer: used by Vencord's own inject script to patch Discord.
 - Radar icon: "Radar" from the Solar Line Duotone Icons collection by [Solar Icons](https://www.svgrepo.com/collection/solar-line-duotone-icons/), via [SVG Repo](https://www.svgrepo.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Recolored and placed on a colored tile for the app icon.
 - Brand icons (Git, Node.js, Discord, Vencord): [Simple Icons](https://simpleicons.org), CC0.

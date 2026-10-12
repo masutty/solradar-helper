@@ -16,6 +16,8 @@ export interface RepoStatus {
     state: RepoState;
     commit?: string;
     detail?: string;
+    // origin is one of the legacy remotes passed to inspectRepo, not the expected one
+    legacyRemote?: boolean;
 }
 
 const TEN_MINUTES = 10 * 60_000;
@@ -31,7 +33,9 @@ export function normalizeRemote(url: string): string {
     return url.trim().toLowerCase().replaceAll("\\", "/").replace(/\/+$/, "").replace(/\.git$/, "");
 }
 
-export async function inspectRepo(ctx: ServiceCtx, dir: string, expectedRemote: string, markerFile: string): Promise<RepoStatus> {
+export async function inspectRepo(
+    ctx: ServiceCtx, dir: string, expectedRemote: string, markerFile: string, legacyRemotes: readonly string[] = [],
+): Promise<RepoStatus> {
     if (!existsSync(dir)) return { state: "absent" };
     // Without its own .git, git would walk up and answer for a parent repo.
     if (!existsSync(join(dir, ".git"))) return { state: "invalid", detail: ".git missing" };
@@ -42,16 +46,25 @@ export async function inspectRepo(ctx: ServiceCtx, dir: string, expectedRemote: 
     if (head.exitCode !== 0) return { state: "invalid", detail: head.stderr.trim() };
 
     const remote = await git(ctx, dir, ["remote", "get-url", "origin"], 30_000);
-    if (remote.exitCode !== 0 || normalizeRemote(remote.stdout) !== normalizeRemote(expectedRemote)) {
+    const actual = normalizeRemote(remote.stdout);
+    const legacy = remote.exitCode === 0 && legacyRemotes.some(r => normalizeRemote(r) === actual);
+    if (remote.exitCode !== 0 || (actual !== normalizeRemote(expectedRemote) && !legacy)) {
         return { state: "invalid", detail: `unexpected remote: ${remote.stdout.trim() || remote.stderr.trim()}` };
     }
 
     const status = await git(ctx, dir, ["status", "--porcelain"], 60_000);
     if (status.exitCode !== 0) return { state: "invalid", detail: status.stderr.trim() };
     const commit = head.stdout.trim();
-    return status.stdout.trim()
+    const result: RepoStatus = status.stdout.trim()
         ? { state: "modified", commit, detail: status.stdout.trim().slice(0, 500) }
         : { state: "ready", commit };
+    if (legacy) result.legacyRemote = true;
+    return result;
+}
+
+// Points origin at a new address. Used to move checkouts off a legacy remote.
+export function setRemote(ctx: ServiceCtx, dir: string, url: string): Promise<CommandResult> {
+    return git(ctx, dir, ["remote", "set-url", "origin", url], 30_000);
 }
 
 // Clone next to the target and rename on success, so an interrupted download
