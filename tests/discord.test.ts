@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-    compareAppDirs, findDiscordInstalls, listDiscordProcesses, parseProcessJson, pickInstall, processesOf, readInjection,
+    closeDiscord, compareAppDirs, findDiscordInstalls, parseAncestorsJson, listDiscordProcesses, parseProcessJson, pickInstall, processesOf, readInjection,
 } from "../src/services/discord";
 import { createCommandRunner } from "../src/core/commands";
 import { createLogger } from "../src/core/logger";
@@ -86,4 +86,24 @@ test("real PowerShell round-trips non-ASCII output with the UTF-8 prefix", async
     const ps = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
     const r = await runner.run({ cmd: ps, args: ["-NoProfile", "-NonInteractive", "-Command", UTF8_PREFIX + "Write-Output 'Jo\u00e3o'"], env: process.env as Record<string, string>, timeoutMs: 30_000 });
     expect(r.stdout).toContain("Jo\u00e3o");
+});
+
+test("parseAncestorsJson reads the parent chain", () => {
+    expect(parseAncestorsJson("")).toEqual([]);
+    expect(parseAncestorsJson(`[{"ProcessId":9,"ParentProcessId":5,"Name":"bun.exe"},{"ProcessId":5,"ParentProcessId":1,"Name":"Discord.exe"}]`))
+        .toEqual([{ pid: 9, parent: 5, name: "bun.exe" }, { pid: 5, parent: 1, name: "Discord.exe" }]);
+});
+
+test("closeDiscord never tree-kills an ancestor of the helper", async () => {
+    const install = { branch: "stable" as const, label: "Discord", root: "C:\\L\\Discord", appDir: "C:\\L\\Discord\\app-1", exe: "Discord.exe" };
+    let alive = true;
+    const { runner, calls } = fakeRunner(spec => {
+        if (spec.cmd.endsWith("taskkill.exe")) { alive = false; return {}; }
+        const exe = "C:\\L\\Discord\\app-1\\Discord.exe";
+        return { stdout: alive ? JSON.stringify([{ ProcessId: 5, ExecutablePath: exe }, { ProcessId: 6, ExecutablePath: exe }]) : "" };
+    });
+    const lineage = [{ pid: 9, parent: 5, name: "bun.exe" }, { pid: 5, parent: 1, name: "Discord.exe" }];
+    expect(await closeDiscord(install, runner, {}, 5_000, lineage)).toBe(true);
+    const kills = calls.filter(c => c.cmd.endsWith("taskkill.exe")).map(c => c.args);
+    expect(kills).toEqual([["/PID", "5", "/F"], ["/PID", "6", "/T", "/F"]]);
 });
