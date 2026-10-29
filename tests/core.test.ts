@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { decoderLabel } from "../src/core/commands";
 import { appPaths } from "../src/core/paths";
 import { loadState, saveState } from "../src/core/state";
 import { createLogger, timestamp, type LogEntry } from "../src/core/logger";
@@ -71,4 +72,11 @@ test("toHelperError keeps HelperErrors and wraps anything else", () => {
     const wrapped = toHelperError(new Error("boom"));
     expect(wrapped.kind).toBe("unknown");
     expect(wrapped.technical).toContain("boom");
+});
+
+test("decoderLabel maps OEM code pages Bun can decode", () => {
+    expect(decoderLabel(866)).toBe("ibm866");
+    expect(decoderLabel(1251)).toBe("windows-1251");
+    expect(decoderLabel(850)).toBe("windows-1252");
+    expect(decoderLabel(NaN)).toBe("windows-1252");
 });

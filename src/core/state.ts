@@ -5,6 +5,8 @@ import { dirname } from "node:path";
 export interface PersistedState {
     branch?: string;
     lastOperation?: { op: string; ok: boolean; at: string };
+    /** Set while an operation runs. Still present at startup means the helper died mid-operation. */
+    inProgress?: { op: string; at: string };
 }
 
 export function loadState(file: string): PersistedState {

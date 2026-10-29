@@ -7,6 +7,8 @@ export interface CommandSpec {
     cwd?: string;
     env?: Record<string, string>;
     timeoutMs?: number;
+    /** The tool prints in the console's OEM code page (taskkill, ping, ...) instead of UTF-8. */
+    oem?: boolean;
 }
 
 export interface CommandResult {
@@ -47,8 +49,26 @@ function killTree(pid: number) {
     });
 }
 
-async function collect(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void): Promise<string> {
-    const decoder = new TextDecoder();
+// Bun's TextDecoder only knows a few OEM pages; others fall back to Windows-1252, which keeps ASCII intact.
+export function decoderLabel(oemcp: number): string {
+    if (oemcp === 866) return "ibm866";
+    if (oemcp >= 1250 && oemcp <= 1258) return `windows-${oemcp}`;
+    return "windows-1252";
+}
+
+let oemLabel: string | undefined;
+function oemDecoderLabel(): string {
+    if (oemLabel) return oemLabel;
+    let cp = 0;
+    try {
+        const r = Bun.spawnSync([system32("reg.exe"), "query", "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Nls\\CodePage", "/v", "OEMCP"], { stdout: "pipe", stderr: "ignore", windowsHide: true });
+        cp = Number(/OEMCP\s+REG_SZ\s+(\d+)/i.exec(r.stdout.toString())?.[1]);
+    } catch { /* fall back below */ }
+    return (oemLabel = decoderLabel(cp));
+}
+
+async function collect(stream: ReadableStream<Uint8Array>, onLine: (line: string) => void, label = "utf-8"): Promise<string> {
+    const decoder = new TextDecoder(label as ConstructorParameters<typeof TextDecoder>[0]);
     let all = "";
     let pending = "";
     for await (const chunk of stream) {
@@ -96,8 +116,9 @@ export function createCommandRunner(logger: Logger): CommandRunner {
             options.signal?.addEventListener("abort", onAbort, { once: true });
             const timer = spec.timeoutMs ? setTimeout(() => { timedOut = true; killTree(proc.pid); }, spec.timeoutMs) : undefined;
 
+            const label = spec.oem ? oemDecoderLabel() : "utf-8";
             const onLine = (line: string) => { logger.log({ level: "debug", kind: "out", text: line }); options.onLine?.(line); };
-            const [stdout, stderr] = await Promise.all([collect(proc.stdout, onLine), collect(proc.stderr, onLine)]);
+            const [stdout, stderr] = await Promise.all([collect(proc.stdout, onLine, label), collect(proc.stderr, onLine, label)]);
             const exitCode = await proc.exited;
 
             clearTimeout(timer);

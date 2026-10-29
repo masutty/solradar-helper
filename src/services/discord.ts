@@ -108,11 +108,45 @@ export async function isDiscordRunning(install: DiscordInstall, runner: CommandR
     return processesOf(install, await listDiscordProcesses(runner, env)).length > 0;
 }
 
+// Walks up the parent chain of `pid` in one PowerShell call. Needed because a helper opened from
+// inside Discord (e.g. from a download in Discord's chat) is a descendant of the process we kill.
+const ANCESTORS_SCRIPT = (pid: number) =>
+    "$p=" + pid + "; $o=@(); for($i=0;$i -lt 32 -and $p;$i++){ $x=Get-CimInstance Win32_Process -Filter \"ProcessId=$p\"; if(-not $x){break}; " +
+    "$o+=[pscustomobject]@{ProcessId=[int]$x.ProcessId;ParentProcessId=[int]$x.ParentProcessId;Name=$x.Name}; $p=$x.ParentProcessId }; " +
+    "ConvertTo-Json -Compress -InputObject @($o)";
+
+export interface ProcessInfo { pid: number; parent: number; name: string }
+
+export function parseAncestorsJson(stdout: string): ProcessInfo[] {
+    const text = stdout.trim();
+    if (!text) return [];
+    const list: any[] = JSON.parse(text);
+    return list
+        .filter(p => typeof p?.ProcessId === "number" && typeof p?.ParentProcessId === "number")
+        .map(p => ({ pid: p.ProcessId, parent: p.ParentProcessId, name: String(p.Name ?? "") }));
+}
+
+/** This process and every ancestor above it. Empty if the lookup fails. */
+export async function ownLineage(runner: CommandRunner, env: ToolEnv, pid = process.pid): Promise<ProcessInfo[]> {
+    try {
+        const ps = system32("WindowsPowerShell\\v1.0\\powershell.exe", env);
+        const r = await runner.run({ cmd: ps, args: ["-NoProfile", "-NonInteractive", "-Command", ANCESTORS_SCRIPT(pid)], env, timeoutMs: 15_000 });
+        return r.exitCode === 0 ? parseAncestorsJson(r.stdout) : [];
+    } catch {
+        return [];
+    }
+}
+
 // Only ever kills processes whose executable lives inside this install's folder.
-export async function closeDiscord(install: DiscordInstall, runner: CommandRunner, env: ToolEnv, timeoutMs = 15_000): Promise<boolean> {
+// Never kills the helper itself: an ancestor of ours is killed alone (no /T), because /T would take us down with it.
+export async function closeDiscord(
+    install: DiscordInstall, runner: CommandRunner, env: ToolEnv, timeoutMs = 15_000, lineage?: ProcessInfo[],
+): Promise<boolean> {
     const taskkill = system32("taskkill.exe", env);
+    const ancestors = new Set((lineage ?? await ownLineage(runner, env)).map(p => p.pid));
     for (const p of processesOf(install, await listDiscordProcesses(runner, env))) {
-        await runner.run({ cmd: taskkill, args: ["/PID", String(p.pid), "/T", "/F"], env, timeoutMs: 10_000 });
+        const args = ancestors.has(p.pid) ? ["/PID", String(p.pid), "/F"] : ["/PID", String(p.pid), "/T", "/F"];
+        await runner.run({ cmd: taskkill, args, env, timeoutMs: 10_000, oem: true });
     }
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {

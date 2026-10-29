@@ -14,7 +14,7 @@ import { loadState, saveState } from "../core/state";
 import { openFolder, openUrl, revealFile } from "../core/win32";
 import { createDebugReport, redactionContextFromEnv } from "../services/debugReport";
 import { checkDependency, DEPENDENCIES, installDependency, minNodeMajor, type DependencyId } from "../services/dependencies";
-import { BRANCHES } from "../services/discord";
+import { BRANCHES, ownLineage } from "../services/discord";
 import { readVencordPackage } from "../services/vencord";
 import { checkUpdates, type UpdateInfo } from "../services/updates";
 import { SharedQueue } from "../shared/queue";
@@ -137,6 +137,12 @@ function simulate(id: SimulationId, on: boolean) {
 
 let running: Promise<void> | null = null;
 
+// Who launched us. Explains crashes when Discord is closed while the helper runs inside its process tree.
+async function logLineage() {
+    const chain = await ownLineage(runner, process.env as ToolEnv);
+    if (chain.length) logger.info("Launched by: " + chain.slice(1).map(p => `${p.name}(${p.pid})`).join(" <- "));
+}
+
 function run(op: OperationKind, closeDiscordFirst: boolean): Promise<void> {
     if (current) return Promise.resolve();
     const p = runInner(op, closeDiscordFirst);
@@ -151,6 +157,8 @@ async function runInner(op: OperationKind, closeDiscordFirst: boolean) {
     pushView();
     const title = op[0]!.toUpperCase() + op.slice(1);
     logger.info(`${title} started`, { branch: state.branch, closeDiscordFirst });
+    state.inProgress = { op, at: new Date().toISOString() };
+    saveState(paths.state, state);
     let ok = false;
     try {
         env = await buildToolEnv(runner);
@@ -168,6 +176,7 @@ async function runInner(op: OperationKind, closeDiscordFirst: boolean) {
         emit({ type: "operation-end", op, ok: false, error: { kind: err.kind, message: err.message } });
     } finally {
         state.lastOperation = { op, ok, at: new Date().toISOString() };
+        delete state.inProgress;
         saveState(paths.state, state);
         current = null;
         syncBackground();
@@ -282,6 +291,12 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         queue = new SharedQueue(msg.buffer);
         for (const entry of pendingLogEntries.splice(0)) queue.push({ type: "log", entry } satisfies BackendEvent);
         logger.info(`SolRadar Helper ${HELPER_VERSION} starting`, { paths });
+        if (state.inProgress) {
+            logger.warn(`The previous run ended unexpectedly during "${state.inProgress.op}" (started ${state.inProgress.at}). See the previous log file.`);
+            delete state.inProgress;
+            saveState(paths.state, state);
+        }
+        logLineage().catch(() => {});
         refresh()
             .then(() => refreshUpdates())
             .catch(e => {
